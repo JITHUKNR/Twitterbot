@@ -1,4 +1,1 @@
-# requirements.txt
-Flask
-gunicorn
 python-telegram-bot
