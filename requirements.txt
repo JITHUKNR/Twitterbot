@@ -2,5 +2,3 @@
 Flask
 gunicorn
 python-telegram-bot
-tweepy
-requests
