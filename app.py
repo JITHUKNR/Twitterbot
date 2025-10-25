@@ -16,7 +16,7 @@ TWITTER_API_SECRET = os.environ.get("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.environ.get("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.environ.get("TWITTER_ACCESS_SECRET")
 # നിങ്ങൾ മീഡിയ എടുക്കാൻ ഉദ്ദേശിക്കുന്ന X അക്കൗണ്ടിന്റെ യൂസർനെയിം (ഉദാഹരണത്തിന്: 'NASA')
-TWITTER_USERNAME = "joonyacinth" 
+TWITTER_USERNAME = "abhiixz" 
 
 # --- 2. Clients സജ്ജീകരിക്കുന്നു ---
 bot = Bot(token=BOT_TOKEN)
