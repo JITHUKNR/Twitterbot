@@ -61,7 +61,7 @@ def get_random_media(username):
         # കണ്ടെത്തിയ മീഡിയകളിൽ നിന്ന് ഒരെണ്ണം റാൻഡമായി തിരഞ്ഞെടുക്കുന്നു
         return random.choice(media_items), None
     
-    except tweepy.TweepyException as e:
+    print(f"CRITICAL TWITTER ERROR DETAILS: {e}")
         return None, f"Twitter API Error: {e}"
     except Exception as e:
         return None, f"An unexpected error occurred: {e}"
