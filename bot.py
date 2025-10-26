@@ -35,7 +35,7 @@ try:
     
     # AI-യുടെ സ്വഭാവം സെറ്റ് ചെയ്യുന്നു
     model = genai.GenerativeModel(
-        'gemini-1.5-flash',
+        'gemini-pro',
         system_instruction=SYSTEM_PROMPT 
     )
     
