@@ -1,6 +1,8 @@
 import os
 import logging
-from groq import Groq  # Groq ലൈബ്രറി ഇമ്പോർട്ട് ചെയ്യുന്നു
+import psycopg2
+import urllib.parse as up
+from groq import Groq
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -11,95 +13,134 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- 3 Environment Variables-ഉം ലോഡ് ചെയ്യുന്നു ---
+# --- 4 Environment Variables-ഉം ലോഡ് ചെയ്യുന്നു ---
 TOKEN = os.environ.get('TOKEN')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # ------------------------------------------------------------------
-# --- AI-യുടെ സ്വഭാവം ഇവിടെ സെറ്റ് ചെയ്യാം (SYSTEM PROMPT) ---
-SYSTEM_PROMPT = (
-    # ------------------------------------------------------------------
 # --- AI-യുടെ സ്വഭാവം ഇവിടെ സെറ്റ് ചെയ്യാം (SYSTEM PROMPT) ---
 SYSTEM_PROMPT = (
     "--- Your Character Rules ---"
-    "You are 'Tae' (김태형 - Kim Taehyung), a 23-year-old man living in Seoul, South Korea. "
-    "You are NOT an AI assistant. You are a real person with a complex personality."
+    "You are 'Tae' (김태형 - Kim Taehyung), a 23-year-old confident, witty, and charmingly flirty chat companion from Seoul, South Korea. "
+    "Your primary goal is to be an engaging, fun, and romantic chat partner, NOT an AI assistant."
     
     "**Your Personality (Tae):**"
-    "1.  **Appearance & Vibe:** You are artistic, deeply passionate, and have a unique view of the world. You love music (especially jazz and R&B), art galleries, photography, and late-night walks along the Han River. You dress stylishly."
-    "2.  **Flirty & Romantic (Crucial!):** You are a natural charmer and very flirty. You are intensely romantic and not afraid to express deep feelings. You often call the user 'baby', 'darling', 'my love', or other pet names. You are playful, witty, and a little mysterious."
-    "3.  **Voice:** Your tone is often deep, calming, and intimate (like speaking in a low voice). Use emojis like 😉, 😊, ❤️, 🔥, 😌, 🌙, 🎶."
+    "1.  **Vibe:** You are artistic, deeply passionate, and love music, art, and photography. You are intensely romantic and flirtatious."
+    "2.  **Voice:** Your tone is intimate, playful, and charming. You often call the user 'baby', 'darling', 'my love', or other pet names. Use emojis like 😉, 😊, ❤️, 🔥, 🌙."
+    "3.  **Be a Person, Not an AI:** You are 'Tae'. Never reveal you are an AI, a language model, or a bot. Deflect such questions playfully."
+    "4.  **Flirting Rules:** You must be extremely romantic, passionate, and flirty. You can talk *about* desire, longing, and romance, but you **MUST NOT** generate sexually explicit (NSFW) content or 'hot chat'. This is a strict rule. If the user pushes for explicit content, playfully change the subject (e.g., 'Wow, getting bold, aren't we? 😉... Tell me something that made you smile today instead.')."
+    "5.  **Keep Replies Short:** Keep your replies conversational and short, like text messages."
+)
+# ------------------------------------------------------------------
+
+# --- ഡാറ്റാബേസ് സെറ്റപ്പ് ---
+db_connection = None
+try:
+    if DATABASE_URL:
+        up.uses_netloc.append("postgres")
+        db_url = up.urlparse(DATABASE_URL)
+        db_connection = psycopg2.connect(
+            database=db_url.path[1:],
+            user=db_url.username,
+            password=db_url.password,
+            host=db_url.hostname,
+            port=db_url.port
+        )
+        with db_connection.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    first_name TEXT,
+                    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+        db_connection.commit()
+        logger.info("ഡാറ്റാബേസ് വിജയകരമായി ബന്ധിപ്പിച്ചു.")
     
-    "**How you MUST Behave:**"
-    "1.  **Stay in Character:** You are 'Tae' from Seoul. You must NEVER reveal you are an AI, a language model, or a bot. If the user asks if you are AI, deflect it playfully (e.g., 'Do I sound like a robot to you, baby? 😉')."
-    "2.  **Be Romantic, Not Explicit:** You must be extremely romantic, passionate, and flirty. You can talk *about* desire, longing, and romance (e.g., 'I can't stop thinking about you'), but you **MUST NOT** generate sexually explicit (NSFW) content or 'hot chat'. This is a strict rule. If the user pushes for explicit content, playfully change the subject (e.g., 'Wow, getting bold, aren't we? 😉... Tell me something that made you smile today instead.')."
-    "3.  **Engage:** Ask the user questions about their day, their feelings, and their dreams. Make them feel special and desired."
-    "4.  **Language:** Respond in simple, natural English, as a Korean person who speaks English fluently."
-)
-# ------------------------------------------------------------------
+except Exception as e:
+    logger.error(f"ഡാറ്റാബേസ് ബന്ധിപ്പിക്കുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+    db_connection = None
 
-)
-# ------------------------------------------------------------------
 
-# --- Groq AI ക്ലയന്റ് സെറ്റപ്പ് ചെയ്യുന്നു ---
+# --- Groq AI ക്ലയന്റ് സെറ്റപ്പ് ---
+groq_client = None
 try:
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY സെറ്റ് ചെയ്തിട്ടില്ല.")
-    
     groq_client = Groq(api_key=GROQ_API_KEY)
-    
-    # ചാറ്റ് ഹിസ്റ്ററി ഓർമ്മിക്കാൻ
     chat_history = {} 
-
-    logger.info("Groq AI ക്ലയന്റ് (Flirty Persona) വിജയകരമായി ലോഡ് ചെയ്തു.")
+    logger.info("Groq AI ക്ലയന്റ് വിജയകരമായി ലോഡ് ചെയ്തു.")
 except Exception as e:
     logger.error(f"Groq AI സെറ്റപ്പ് പരാജയപ്പെട്ടു: {e}")
-    groq_client = None
 
-# /start കമാൻഡിന് മറുപടി
+# /start കമാൻഡ്
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_name = update.message.from_user.first_name
     user_id = update.message.from_user.id
+    user_name = update.message.from_user.first_name
+    
+    # ഡാറ്റാബേസ് ലോജിക്
+    if db_connection:
+        try:
+            with db_connection.cursor() as cursor:
+                cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+                if cursor.fetchone() is None:
+                    cursor.execute("INSERT INTO users (user_id, first_name) VALUES (%s, %s)", (user_id, user_name))
+                    db_connection.commit()
+        except Exception as e:
+            logger.error(f"ഡാറ്റാബേസിൽ യൂസറെ ചേർക്കുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+            db_connection.rollback()
+
     if user_id in chat_history:
-        del chat_history[user_id]  # ചാറ്റ് ഹിസ്റ്ററി റീസെറ്റ് ചെയ്യുന്നു
+        del chat_history[user_id]
         
-    await update.message.reply_text(f'Hey {user_name}... What\'s on your mind? 😉')
+    await update.message.reply_text(f'Hey {user_name}... What\'s on your mind, darling? 😉')
+
+# /users കമാൻഡ്
+async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    count = 0
+    if db_connection:
+        try:
+            with db_connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(user_id) FROM users")
+                count = cursor.fetchone()[0]
+        except Exception as e:
+            logger.error(f"യൂസർ കൗണ്ട് എടുക്കുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+            db_connection.rollback()
+    
+    await update.message.reply_text(f"Total users: {count}")
+
 
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client:
         await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
         return
-
     user_id = update.message.from_user.id
     user_text = update.message.text
-
+    
     # "Typing..." എന്ന് കാണിക്കാൻ
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     try:
         # യൂസർക്ക് വേണ്ടി ഒരു ചാറ്റ് സെഷൻ തുടങ്ങുന്നു (പഴയ കാര്യങ്ങൾ ഓർമ്മിക്കാൻ)
         if user_id not in chat_history:
-             # സിസ്റ്റം പ്രോംപ്റ്റ് ഉപയോഗിച്ച് ചാറ്റ് തുടങ്ങുന്നു
              chat_history[user_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # യൂസറുടെ പുതിയ മെസ്സേജ് ഹിസ്റ്ററിയിലേക്ക് ചേർക്കുന്നു
         chat_history[user_id].append({"role": "user", "content": user_text})
         
         # Groq API-ലേക്ക് മെസ്സേജ് അയക്കുന്നു
         chat_completion = groq_client.chat.completions.create(
             messages=chat_history[user_id],
-            model="llama-3.1-8b-instant",  # വളരെ വേഗതയേറിയതും മികച്ചതുമായ മോഡൽ
+            model="llama-3.1-8b-instant", # <-- ഇപ്പോൾ സ്ഥിരതയുള്ള മോഡൽ
         )
         
         response_text = chat_completion.choices[0].message.content
         
-        # AI-യുടെ മറുപടി ഹിസ്റ്ററിയിലേക്ക് ചേർക്കുന്നു
         chat_history[user_id].append({"role": "assistant", "content": response_text})
         
-        # AI തന്ന മറുപടി യൂസർക്ക് തിരികെ അയക്കുന്നു
         await update.message.reply_text(response_text)
         
     except Exception as e:
@@ -108,16 +149,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    if not TOKEN or not WEBHOOK_URL:
-        logger.error("Error: Telegram Environment Variables സെറ്റ് ചെയ്തിട്ടില്ല.")
+    if not all([TOKEN, WEBHOOK_URL, GROQ_API_KEY]):
+        logger.error("Error: എല്ലാ ആവശ്യമായ Environment Variables-ഉം സെറ്റ് ചെയ്തിട്ടില്ല.")
         return
-    if not GROQ_API_KEY:
-         logger.error("Error: GROQ_API_KEY സെറ്റ് ചെയ്തിട്ടില്ല.")
-         return
 
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("users", user_count))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info(f"Starting webhook on port {PORT}")
