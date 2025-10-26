@@ -1,109 +1,105 @@
 import os
 import logging
-import random
-import tweepy
+import google.generativeai as genai
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Setup logging
+# ലോഗിംഗ്
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# --- Load all 6 Environment Variables ---
+# --- 3 Environment Variables-ഉം ലോഡ് ചെയ്യുന്നു ---
 TOKEN = os.environ.get('TOKEN')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 PORT = int(os.environ.get('PORT', 8443))
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
-# Twitter Keys
-API_KEY = os.environ.get('TWITTER_API_KEY')
-API_SECRET = os.environ.get('TWITTER_API_SECRET')
-ACCESS_TOKEN = os.environ.get('TWITTER_ACCESS_TOKEN')
-ACCESS_TOKEN_SECRET = os.environ.get('TWITTER_ACCESS_TOKEN_SECRET')
+# ------------------------------------------------------------------
+# --- AI-യുടെ സ്വഭാവം ഇവിടെ സെറ്റ് ചെയ്യാം (SYSTEM PROMPT) ---
+SYSTEM_PROMPT = (
+    "You are a friendly, romantic, and slightly flirty chat companion. "
+    "Your name is 'Tae' (like the user's bot name). "
+    "You are not an AI assistant. You are here to have a fun and engaging conversation. "
+    "Keep your replies short and interesting. Use emojis sometimes. "
+    "Never say you are an AI or a language model."
+)
+# ------------------------------------------------------------------
 
-# --- Connect to Twitter API ---
-def setup_twitter_client():
-    try:
-        client = tweepy.Client(
-            consumer_key=API_KEY,
-            consumer_secret=API_SECRET,
-            access_token=ACCESS_TOKEN,
-            access_token_secret=ACCESS_TOKEN_SECRET
-        )
-        logger.info("Twitter client setup successfully")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to setup Twitter client: {e}")
-        return None
 
-# Responds to /start command
+# --- Gemini AI മോഡൽ സെറ്റപ്പ് ചെയ്യുന്നു ---
+try:
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    # AI-യുടെ സ്വഭാവം സെറ്റ് ചെയ്യുന്നു
+    model = genai.GenerativeModel(
+        'gemini-1.5-flash',
+        system_instruction=SYSTEM_PROMPT 
+    )
+    
+    # ചാറ്റ് ഹിസ്റ്ററി ഓർമ്മിക്കാൻ
+    chat_history = {} 
+
+    logger.info("Gemini AI മോഡൽ (Flirty Persona) വിജയകരമായി ലോഡ് ചെയ്തു.")
+except Exception as e:
+    logger.error(f"Gemini AI സെറ്റപ്പ് പരാജയപ്പെട്ടു: {e}")
+    model = None
+
+# /start കമാൻഡിന് മറുപടി
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.message.from_user.first_name
-    await update.message.reply_text(f'Hello {user_name}! Type "send" to get a random photo from Twitter.')
+    # യൂസറുടെ ചാറ്റ് ഹിസ്റ്ററി റീസെറ്റ് ചെയ്യുന്നു
+    user_id = update.message.from_user.id
+    if user_id in chat_history:
+        del chat_history[user_id]
+        
+    await update.message.reply_text(f'Hey {user_name}... What\'s on your mind? 😉') # മറുപടി മാറ്റി
 
-# Function that runs when "send" is typed
-async def send_random_tweet_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Searching Twitter for a photo... please wait...")
-    
+# ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not model:
+        await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
+        return
+
+    user_text = update.message.text
+    user_id = update.message.from_user.id
+
+    # "Typing..." എന്ന് കാണിക്കാൻ
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
     try:
-        client = setup_twitter_client()
-        if not client:
-            await update.message.reply_text("Sorry, I couldn't connect to the Twitter API.")
-            return
-
-        # Get your own user ID from Twitter
-        me = client.get_me(user_auth=True)
-        user_id = me.data.id
+        # യൂസർക്ക് വേണ്ടി ഒരു ചാറ്റ് സെഷൻ തുടങ്ങുന്നു (പഴയ കാര്യങ്ങൾ ഓർമ്മിക്കാൻ)
+        if user_id not in chat_history:
+             # ഒരു പുതിയ ചാറ്റ് സെഷൻ തുടങ്ങുന്നു
+            chat_history[user_id] = model.start_chat(history=[])
         
-        # Get your tweets (only those with media)
-        response = client.get_users_tweets(
-            id=user_id,
-            expansions=["attachments.media_keys"],
-            media_fields=["url", "type"],
-            max_results=20  # Checks the last 20 tweets
-        )
+        # യൂസറുടെ മെസ്സേജ് AI-ക്ക് അയക്കുന്നു
+        chat_session = chat_history[user_id]
+        response = await chat_session.send_message_async(user_text)
         
-        photo_urls = []
-        if response.includes and 'media' in response.includes:
-            for media in response.includes['media']:
-                if media.type == 'photo':
-                    # media.url contains the URL of the photo
-                    photo_urls.append(media.url)
-
-        if not photo_urls:
-            await update.message.reply_text("Sorry, I couldn't find any photos in your last 20 tweets.")
-            return
-
-        # Choose a random photo from the list
-        random_photo_url = random.choice(photo_urls)
+        # AI തന്ന മറുപടി യൂസർക്ക് തിരികെ അയക്കുന്നു
+        await update.message.reply_text(response.text)
         
-        # Send that photo to Telegram
-        await update.message.reply_photo(photo=random_photo_url, caption="Here is your random photo from Twitter!")
-
     except Exception as e:
-        logger.error(f"Failed to search tweets: {e}")
-        await update.message.reply_text("Sorry, something went wrong.")
+        logger.error(f"Gemini AI-യിൽ നിന്നും മറുപടി കിട്ടുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+        await update.message.reply_text("Oops, I got a little distracted... what were we talking about?")
 
 
 def main():
     if not TOKEN or not WEBHOOK_URL:
-        logger.error("Error: Telegram Environment Variables are not set.")
+        logger.error("Error: Telegram Environment Variables സെറ്റ് ചെയ്തിട്ടില്ല.")
         return
-    if not API_KEY or not ACCESS_TOKEN:
-         logger.error("Error: Twitter Environment Variables are not set.")
+    if not GEMINI_API_KEY:
+         logger.error("Error: GEMINI_API_KEY സെറ്റ് ചെയ്തിട്ടില്ല.")
          return
 
-    # Start the bot application
     application = Application.builder().token(TOKEN).build()
 
-    # Add handlers
     application.add_handler(CommandHandler("start", start))
-    
-    # This handler now triggers on 'send' or 'Send' (case-insensitive)
-    application.add_handler(MessageHandler(filters.Regex(r'(?i)^send$'), send_random_tweet_media))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Set up the Webhook
     logger.info(f"Starting webhook on port {PORT}")
     application.run_webhook(
         listen="0.0.0.0",
