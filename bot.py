@@ -1,5 +1,7 @@
 import os
 import logging
+import random
+import tweepy  # ട്വിറ്റർ ലൈബ്രറി
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -9,48 +11,105 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Render നൽകുന്ന Environment Variables
+# --- 6 Environment Variables-ഉം ലോഡ് ചെയ്യുന്നു ---
 TOKEN = os.environ.get('TOKEN')
-# Render-ലെ നിങ്ങളുടെ ആപ്പിന്റെ URL (ഇത് നമ്മൾ അടുത്ത ഘട്ടത്തിൽ സെറ്റ് ചെയ്യും)
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-# Render ഓട്ടോമാറ്റിക്കായി നൽകുന്ന പോർട്ട് നമ്പർ
 PORT = int(os.environ.get('PORT', 8443))
 
-# /start കമാൻഡിന് മറുപടി നൽകുന്ന ഫംഗ്ഷൻ (പഴയതുപോലെ)
+# ട്വിറ്റർ കീകൾ
+API_KEY = os.environ.get('TWITTER_API_KEY')
+API_SECRET = os.environ.get('TWITTER_API_SECRET')
+ACCESS_TOKEN = os.environ.get('TWITTER_ACCESS_TOKEN')
+ACCESS_TOKEN_SECRET = os.environ.get('TWITTER_ACCESS_TOKEN_SECRET')
+
+# --- ട്വിറ്റർ API-യുമായി ബന്ധിപ്പിക്കുന്നു ---
+def setup_twitter_client():
+    try:
+        client = tweepy.Client(
+            consumer_key=API_KEY,
+            consumer_secret=API_SECRET,
+            access_token=ACCESS_TOKEN,
+            access_token_secret=ACCESS_TOKEN_SECRET
+        )
+        logger.info("ട്വിറ്റർ ക്ലയന്റ് വിജയകരമായി സെറ്റപ്പ് ചെയ്തു")
+        return client
+    except Exception as e:
+        logger.error(f"ട്വിറ്റർ ക്ലയന്റ് സെറ്റപ്പ് പരാജയപ്പെട്ടു: {e}")
+        return None
+
+# /start കമാൻഡിന് മറുപടി
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.message.from_user.first_name
-    await update.message.reply_text(f'ഹലോ {user_name}! എന്നോട് എന്തെങ്കിലും പറയൂ...')
+    await update.message.reply_text(f'ഹലോ {user_name}! ട്വിറ്ററിൽ നിന്നും ഒരു റാൻഡം ഫോട്ടോ കിട്ടാൻ "സെൻറ്" എന്ന് ടൈപ്പ് ചെയ്യൂ.')
 
-# മെസ്സേജുകൾക്ക് മറുപടി (echo) നൽകുന്ന ഫംഗ്ഷൻ (പഴയതുപോലെ)
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    await update.message.reply_text(f'നിങ്ങൾ പറഞ്ഞത്: "{user_text}"')
+# "സെൻറ്" എന്ന് അയക്കുമ്പോൾ പ്രവർത്തിക്കുന്ന ഫംഗ്ഷൻ
+async def send_random_tweet_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("ട്വിറ്ററിൽ നിന്നും ഫോട്ടോ തിരയുന്നു... ദയവായി കാത്തിരിക്കുക...")
+    
+    try:
+        client = setup_twitter_client()
+        if not client:
+            await update.message.reply_text("ക്ഷമിക്കണം, ട്വിറ്റർ API-യുമായി ബന്ധിപ്പിക്കാൻ സാധിക്കുന്നില്ല.")
+            return
+
+        # നിങ്ങളുടെ സ്വന്തം യൂസർ ID ട്വിറ്ററിൽ നിന്നും എടുക്കുന്നു
+        me = client.get_me(user_auth=True)
+        user_id = me.data.id
+        
+        # നിങ്ങളുടെ ട്വീറ്റുകൾ എടുക്കുന്നു (മീഡിയ ഉള്ളവ മാത്രം)
+        response = client.get_users_tweets(
+            id=user_id,
+            expansions=["attachments.media_keys"],
+            media_fields=["url", "type"],
+            max_results=20  # അവസാന 20 ട്വീറ്റുകൾ പരിശോധിക്കുന്നു
+        )
+        
+        photo_urls = []
+        if response.includes and 'media' in response.includes:
+            for media in response.includes['media']:
+                if media.type == 'photo':
+                    # media.url-ൽ ഫോട്ടോയുടെ URL ഉണ്ടാകും
+                    photo_urls.append(media.url)
+
+        if not photo_urls:
+            await update.message.reply_text("ക്ഷമിക്കണം, നിങ്ങളുടെ അവസാന 20 ട്വീറ്റുകളിൽ ഫോട്ടോകൾ ഒന്നും കണ്ടെത്താനായില്ല.")
+            return
+
+        # കിട്ടിയ ഫോട്ടോകളിൽ നിന്നും ഒരെണ്ണം റാൻഡം ആയി തിരഞ്ഞെടുക്കുന്നു
+        random_photo_url = random.choice(photo_urls)
+        
+        # ആ ഫോട്ടോ ടെലിഗ്രാമിലേക്ക് അയക്കുന്നു
+        await update.message.reply_photo(photo=random_photo_url, caption="ട്വിറ്ററിൽ നിന്നുള്ള നിങ്ങളുടെ റാൻഡം ഫോട്ടോ!")
+
+    except Exception as e:
+        logger.error(f"ട്വീറ്റ് തിരയുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+        await update.message.reply_text("ക്ഷമിക്കണം, എന്തോ ഒരു എറർ സംഭവിച്ചു.")
+
 
 def main():
-    if not TOKEN:
-        logger.error("Error: 'TOKEN' Environment Variable സെറ്റ് ചെയ്തിട്ടില്ല.")
+    if not TOKEN or not WEBHOOK_URL:
+        logger.error("Error: Telegram-ന്റെ Environment Variables സെറ്റ് ചെയ്തിട്ടില്ല.")
         return
-    if not WEBHOOK_URL:
-        logger.error("Error: 'WEBHOOK_URL' Environment Variable സെറ്റ് ചെയ്തിട്ടില്ല.")
-        return
+    if not API_KEY or not ACCESS_TOKEN:
+         logger.error("Error: Twitter-ന്റെ Environment Variables സെറ്റ് ചെയ്തിട്ടില്ല.")
+         return
 
     # ബോട്ട് ആപ്ലിക്കേഷൻ സ്റ്റാർട്ട് ചെയ്യുന്നു
     application = Application.builder().token(TOKEN).build()
 
     # ഹാൻഡ്ലറുകൾ ചേർക്കുന്നു
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.add_handler(MessageHandler(filters.Regex(r'^സെൻറ്$'), send_random_tweet_media))
 
     # Webhook സെറ്റ് ചെയ്യുന്നു
-    # ഈ ഫംഗ്ഷൻ ടെലിഗ്രാമിനോട് നമ്മുടെ URL അറിയിക്കുകയും 
-    # Render-ന് ആവശ്യമായ പോർട്ടിൽ വെബ് സെർവർ സ്റ്റാർട്ട് ചെയ്യുകയും ചെയ്യും
     logger.info(f"പോർട്ട് {PORT}-ൽ Webhook സ്റ്റാർട്ട് ചെയ്യുന്നു")
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
-        url_path=TOKEN,  # URL-ന്റെ അവസാന ഭാഗം (സുരക്ഷയ്ക്കായി ടോക്കൺ തന്നെ ഉപയോഗിക്കുന്നു)
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}" # ടെലിഗ്രാം മെസ്സേജ് അയക്കേണ്ട ഫുൾ URL
+        url_path=TOKEN, 
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
     )
 
 if __name__ == '__main__':
     main()
+    
