@@ -76,7 +76,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Groq API-ലേക്ക് മെസ്സേജ് അയക്കുന്നു
         chat_completion = groq_client.chat.completions.create(
             messages=chat_history[user_id],
-            model="llama3-8b-8192",  # വളരെ വേഗതയേറിയതും മികച്ചതുമായ മോഡൽ
+            model="llama3-70b-8192",  # വളരെ വേഗതയേറിയതും മികച്ചതുമായ മോഡൽ
         )
         
         response_text = chat_completion.choices[0].message.content
