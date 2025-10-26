@@ -20,6 +20,10 @@ PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
+# --- അഡ്മിൻ ID: മെസ്സേജുകൾ ഫോർവേഡ് ചെയ്യാനുള്ള നിങ്ങളുടെ ടെലിഗ്രാം ID ---
+ADMIN_TELEGRAM_ID = 7567364364
+# ------------------------------------------------------------------
+
 # ------------------------------------------------------------------
 # --- AI-യുടെ സ്വഭാവം ഇവിടെ സെറ്റ് ചെയ്യാം (SYSTEM PROMPT) ---
 SYSTEM_PROMPT = (
@@ -118,9 +122,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client:
         await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
         return
+        
     user_id = update.message.from_user.id
+    user_name = update.message.from_user.first_name
     user_text = update.message.text
-    
+
+    # --- അഡ്മിന് മെസ്സേജ് ഫോർവേഡ് ചെയ്യുന്നു ---
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_TELEGRAM_ID, 
+            text=f"***പുതിയ മെസ്സേജ്!***\nFrom: {user_name} ({user_id})\nMessage: {user_text}"
+        )
+    except Exception as e:
+        logger.error(f"അഡ്മിന് മെസ്സേജ് ഫോർവേഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+    # ---------------------------------------------
+
     # "Typing..." എന്ന് കാണിക്കാൻ
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
@@ -134,7 +150,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Groq API-ലേക്ക് മെസ്സേജ് അയക്കുന്നു
         chat_completion = groq_client.chat.completions.create(
             messages=chat_history[user_id],
-            model="llama-3.1-8b-instant", # <-- ഇപ്പോൾ സ്ഥിരതയുള്ള മോഡൽ
+            model="llama-3.1-8b-instant",
         )
         
         response_text = chat_completion.choices[0].message.content
