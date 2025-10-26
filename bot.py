@@ -126,12 +126,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
     user_text = update.message.text
+    user_username = update.message.from_user.username # <-- യൂസർ നെയിം എടുക്കുന്നു
+
+    # യൂസർ നെയിം ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു
+    if user_username:
+        sender_info = f"@{user_username} ({user_name}, ID: {user_id})"
+    else:
+        sender_info = f"{user_name} (ID: {user_id})"
 
     # --- അഡ്മിന് മെസ്സേജ് ഫോർവേഡ് ചെയ്യുന്നു ---
     try:
         await context.bot.send_message(
             chat_id=ADMIN_TELEGRAM_ID, 
-            text=f"***പുതിയ മെസ്സേജ്!***\nFrom: {user_name} ({user_id})\nMessage: {user_text}"
+            text=f"***പുതിയ മെസ്സേജ്!***\nFrom: {sender_info}\nMessage: {user_text}"
         )
     except Exception as e:
         logger.error(f"അഡ്മിന് മെസ്സേജ് ഫോർവേഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
@@ -185,3 +192,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
