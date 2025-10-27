@@ -125,14 +125,6 @@ async def establish_db_connection():
 # --- പുതിയ ഫംഗ്ഷൻ: മീഡിയ ID-കൾ ഡാറ്റാബേസിൽ ശേഖരിക്കുന്നു ---
 # ------------------------------------------------------------------
 async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # അഡ്മിൻ ചാനലിൽ നിന്നുള്ള മെസ്സേജ് ആണോ എന്ന് പരിശോധിക്കുന്നു
-    try:
-        if str(update.message.chat_id) != str(ADMIN_CHANNEL_ID):
-            return
-    except ValueError:
-         logger.warning("ADMIN_CHANNEL_ID is invalid, skipping media collection.")
-         return
-
     message = update.message
     message_id = message.message_id
     file_id = None
@@ -379,16 +371,10 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ഈ ഫംഗ്ഷൻ നിങ്ങളുടെ ചാനൽ മീഡിയ ID-കൾ ശേഖരിക്കാനും AI ചാറ്റ് ചെയ്യാനും ഉപയോഗിക്കുന്നു
-
-    # 1. ചാനൽ മെസ്സേജുകൾ ആണെങ്കിൽ, മീഡിയ ശേഖരിക്കുന്നു
+    # ചാനലിൽ മീഡിയ പോസ്റ്റ് ചെയ്യുമ്പോൾ, AI ചാറ്റ് ഒഴിവാക്കി മീഡിയ ശേഖരിക്കുന്നു
     if str(update.message.chat_id) == str(ADMIN_CHANNEL_ID):
         await collect_media(update, context) 
         return # മീഡിയ സേവ് ചെയ്ത ശേഷം ഇവിടെ നിർത്തുന്നു
-
-    # -----------------------------------------------------------
-    # 2. പ്രൈവറ്റ് ചാറ്റ് ആണെങ്കിൽ AI ചാറ്റിംഗ് ലോജിക്
-    # -----------------------------------------------------------
 
     if not groq_client:
         await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
@@ -459,7 +445,7 @@ def main():
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
     
-    # --- മീഡിയ കളക്ഷനും ചാറ്റിനുമുള്ള ഹാൻഡ്ലർ (പരിഹാരത്തിനായി ഇവിടെ മാറ്റം വരുത്തി) ---
+    # --- മീഡിയ കളക്ഷനും ചാറ്റിനുമുള്ള ഹാൻഡ്ലർ (പരിഹാരം) ---
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, handle_message))
     # --------------------------------------
 
