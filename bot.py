@@ -132,7 +132,7 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Total users: {count}")
 
 # ------------------------------------------------------------------
-# --- മീഡിയ ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ ---
+# --- മീഡിയ ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/bmedia) ---
 # ------------------------------------------------------------------
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -145,20 +145,27 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_msg = update.message.reply_to_message
     
     # മീഡിയ ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു
-    if not reply_msg or (not reply_msg.photo and not reply_msg.video):
-        await update.message.reply_text("You must reply to a Photo or a Video to use /bmedia.")
+    if not reply_msg:
+        await update.message.reply_text("ERROR: You must REPLY to the Photo or Video you want to broadcast.")
+        return
+        
+    if not reply_msg.photo and not reply_msg.video:
+        await update.message.reply_text("ERROR: The message you replied to does not contain a Photo or Video.")
         return
 
     # മീഡിയ ടൈപ്പ്, ഫയൽ ID, അടിക്കുറിപ്പ് എന്നിവ എടുക്കുന്നു
+    file_id = None
+    media_type = None
+
     if reply_msg.photo:
-        # ഏറ്റവും വലിയ ഫോട്ടോ എടുക്കുന്നു
         file_id = reply_msg.photo[-1].file_id
         media_type = 'photo'
     elif reply_msg.video:
         file_id = reply_msg.video.file_id
         media_type = 'video'
-    else:
-        await update.message.reply_text("Could not extract media file ID.")
+
+    if not file_id:
+        await update.message.reply_text("ERROR: Could not extract media file ID.")
         return
 
     caption = " ".join(context.args)
@@ -166,6 +173,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = "Tae's special post!"
 
     if db_connection:
+        # ഇവിടെ ബ്രോഡ്കാസ്റ്റ് ലോജിക് ആരംഭിക്കുന്നു
         try:
             with db_connection.cursor() as cursor:
                 cursor.execute("SELECT user_id FROM users")
@@ -208,7 +216,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Database connection unavailable. Cannot fetch user list.")
 
 # ------------------------------------------------------------------
-# --- ടെക്സ്റ്റ് ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (നിലവിലുള്ളത്) ---
+# --- ടെക്സ്റ്റ് ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/broadcast) ---
 # ------------------------------------------------------------------
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
