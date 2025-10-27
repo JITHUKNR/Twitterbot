@@ -4,7 +4,6 @@ import psycopg2
 import urllib.parse as up
 import asyncio
 import random
-# requests ലൈബ്രറി ഇവിടെയാണ് ഇമ്പോർട്ട് ചെയ്യുന്നത്
 import requests 
 from groq import Groq
 from telegram import Update
@@ -24,7 +23,6 @@ WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
-# GOOGLE_SEARCH_API_KEY = os.environ.get('GOOGLE_SEARCH_API_KEY') # API Key ആവശ്യമില്ല
 
 # --- അഡ്മിൻ ID: മെസ്സേജുകൾ ഫോർവേഡ് ചെയ്യാനുള്ള നിങ്ങളുടെ ടെലിഗ്രാം ID ---
 ADMIN_TELEGRAM_ID = 7567364364 
@@ -173,12 +171,13 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_pinterest_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Searching for the perfect BTS photo... wait for Tae. 😉")
     
-    # Pinterest/Google-ന് API ഇല്ലാത്തതിനാൽ, ഇവിടെ സ്ഥിരമായ ചിത്രങ്ങൾ ഉപയോഗിക്കുന്നു.
+    # നിങ്ങൾ നൽകിയ യഥാർത്ഥ URL-കൾ ഇവിടെ ചേർക്കുന്നു
     image_urls = [
-        "https://placehold.co/400x550/228B22/FFFFFF?text=TaeKook+Aesthetic",
-        "https://placehold.co/400x550/5F9EA0/FFFFFF?text=BTS+V+Jungkook",
-        "https://placehold.co/400x550/6495ED/FFFFFF?text=Taehyung+Jungkook",
-        "https://placehold.co/400x550/8A2BE2/FFFFFF?text=Romantic+Moment",
+        "https://pbs.twimg.com/media/GFZLoidboAAYjjW.jpg",
+        "https://pbs.twimg.com/media/GgwRL03W8AAirZp.jpg",
+        "https://pbs.twimg.com/media/F3_-CUhXkAA8Ulu.jpg",
+        "https://pbs.twimg.com/media/E-GpwFgXIAENyi6.jpg",
+        "https://pbs.twimg.com/media/Gp5xjWYXgAAW9IM.jpg",
     ]
     
     try:
@@ -265,12 +264,8 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_msg = update.message.reply_to_message
     
-    if not reply_msg:
+    if not reply_msg or (not reply_msg.photo and not reply_msg.video):
         await update.message.reply_text("ERROR: You must REPLY to the Photo or Video you want to broadcast.")
-        return
-        
-    if not reply_msg.photo and not reply_msg.video:
-        await update.message.reply_text("ERROR: The message you replied to does not contain a Photo or Video.")
         return
 
     file_id = None
@@ -403,7 +398,7 @@ def main():
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("broadcast", broadcast_message))
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
-    application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
+    application.add_handler(CommandHandler("pinterest", send_pinterest_photo)) # <-- Pinterest ഫീച്ചർ
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # വെബ്ഹൂക്ക് സെറ്റപ്പ് (24/7 ഹോസ്റ്റിങ്ങിന്)
