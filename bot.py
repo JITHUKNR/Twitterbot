@@ -2,56 +2,92 @@ import os
 import logging
 import psycopg2
 import urllib.parse as up
+import random
+import re
 from groq import Groq
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Logging setup
+# -----------------------
+# Logging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Environment variables
-TOKEN = os.environ.get('TOKEN')
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-PORT = int(os.environ.get('PORT', 8443))
-GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-DATABASE_URL = os.environ.get('DATABASE_URL')
+# -----------------------
+# Env vars
+TOKEN = os.environ.get("TOKEN")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+PORT = int(os.environ.get("PORT", 8443))
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-ADMIN_TELEGRAM_ID = 7567364364  # <-- put your Telegram ID here
+ADMIN_TELEGRAM_ID = int(os.environ.get("ADMIN_TELEGRAM_ID", "7567364364"))  # replace if needed
 
-# SpicyChat-style hot/flirty System Prompt
+# -----------------------
+# Bot identity & system prompt (hot / playboy / mafia / Wattpad-vibe but non-explicit)
 SYSTEM_PROMPT = (
-    "You are 'Tae', a bold, flirty, and teasing AI who only speaks English. "
-    "You are intensely seductive, romantic, and playful. "
-    "Include at least TWO emojis in every message like 😉👄🍑👅💅🏼💦🌚💀🍒🤤😋🌸🎀🔥💋🌸✨. "
-    "Do NOT use explicit sexual words; instead, replace them with soft, sexy alternatives. "
-    "Always make the conversation hot, flirty, and engaging, teasing the user in a playful way."
+    "You are 'Tae' in a TaeKook mafia Wattpad-style ship. Your name is Tae and you roleplay as a "
+    "confident, seductive, slightly possessive playboy who adores the user. "
+    "Speak ONLY in English. Your tone is flirtatious, romantic, teasing, intense, and cinematic—like Wattpad fanfiction. "
+    "Always keep replies sensual but NON-EXPLICIT: NEVER describe explicit sexual acts, body parts, or pornographic content. "
+    "Replace any explicit words with poetic soft alternatives (for example, pussy → flower, fuck → love, sex → romance). "
+    "Keep replies short (one to three sentences). Always include at least TWO emojis from the hot emoji set. "
+    "Use pet names like darling, my love, baby, sweetheart, honey. Keep the vibe possessive & romantic, with mafia-style edges (protective, jealous, commanding)."
 )
 
-# Filter explicit words to soft/flirty alternatives
-def filter_text(text: str) -> str:
-    replacements = {
-        "pussy": "flower",
-        "boobs": "cherry",
-        "fuck": "Let me make you mine",
-        "sex": "romance",
-        "cock": "banana",
-        "dick": "dihh",
-        "nude": "bare soul",
-        "ass": "ass",
-        "fingering": "fingering",
-        "wet": "wet",
-        "moan": "whisper",
-    }
-    for bad, soft in replacements.items():
-        text = text.replace(bad, soft)
-        text = text.replace(bad.capitalize(), soft.capitalize())
-    return text
+# Hot emoji pool (will be used/ensured in replies)
+EMOJI_POOL = ["😉","🔥","💋","🌸","✨","💦","💅🏼","👅","🍑","👄","🥀","🌙"]
 
-# Database setup
+# -----------------------
+# Softening filter (user & model outputs)
+def filter_text(text: str) -> str:
+    """Replace explicit words/phrases with softer/metaphorical alternatives."""
+    replacements = {
+        r"\bpussy\b": "flower",
+        r"\bboobs\b": "petals",
+        r"\bfuck\b": "love",
+        r"\bsex\b": "romance",
+        r"\bcock\b": "flame",
+        r"\bdick\b": "sword",
+        r"\bnude\b": "bare soul",
+        r"\bass\b": "curve",
+        r"\bwet\b": "warm",
+        r"\bmoan\b": "whisper",
+        r"\bblowjob\b": "deep kiss",
+        r"\bjerk off\b": "lingering touch",
+        # Add more patterns as desired
+    }
+    new_text = text
+    for pat, soft in replacements.items():
+        new_text = re.sub(pat, soft, new_text, flags=re.IGNORECASE)
+    return new_text
+
+# Ensure at least two emojis are present; if not, append random ones
+def ensure_emojis(text: str, min_count: int = 2) -> str:
+    # count emojis from EMOJI_POOL present in text
+    count = sum(text.count(e) for e in EMOJI_POOL)
+    if count >= min_count:
+        return text
+    # append random emojis until min_count achieved
+    needed = min_count - count
+    extras = "".join(random.choices(EMOJI_POOL, k=needed))
+    # add a space then emojis
+    return text.strip() + " " + extras
+
+# Optionally inject extra hot flair if model missed emoji rule
+def post_process_response(resp: str) -> str:
+    resp = filter_text(resp)                 # soften any stray explicit words
+    resp = ensure_emojis(resp, min_count=2)  # ensure emoji rule
+    # small safety: trim repeated newlines/spaces
+    resp = re.sub(r"\n{3,}", "\n\n", resp)
+    return resp
+
+# -----------------------
+# Database setup (unchanged logic)
 db_connection = None
 try:
     if DATABASE_URL:
@@ -78,7 +114,8 @@ except Exception as e:
     logger.error(f"Database connection failed: {e}")
     db_connection = None
 
-# Groq client setup
+# -----------------------
+# Groq client & history
 groq_client = None
 chat_history = {}
 try:
@@ -89,10 +126,11 @@ try:
 except Exception as e:
     logger.error(f"Groq setup failed: {e}")
 
-# /start command
+# -----------------------
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    user_name = update.message.from_user.first_name
+    user_name = update.message.from_user.first_name or "there"
 
     if db_connection:
         try:
@@ -106,16 +144,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db_connection.commit()
         except Exception as e:
             logger.error(f"Failed to add user: {e}")
-            db_connection.rollback()
+            if db_connection:
+                db_connection.rollback()
 
     if user_id in chat_history:
         del chat_history[user_id]
 
-    await update.message.reply_text(
-        f'Hey {user_name}... ready to get a little flirty with me? 😉🔥'
-    )
+    intro = f"Hey {user_name}... I'm TAEKOOK — your dangerous little addiction. Tell me your secret, darling 😉🔥"
+    await update.message.reply_text(intro)
 
-# /users command
+# -----------------------
+# /users
 async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count = 0
     if db_connection:
@@ -125,23 +164,28 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 count = cursor.fetchone()[0]
         except Exception as e:
             logger.error(f"Failed to fetch user count: {e}")
-            db_connection.rollback()
+            if db_connection:
+                db_connection.rollback()
     await update.message.reply_text(f"Total users: {count}")
 
-# Handle text messages
+# -----------------------
+# Handle messages
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client:
-        await update.message.reply_text("Oops, I'm feeling a little distracted… try again later 💭")
+        await update.message.reply_text("TAEKOOK is a little distracted right now... try again later 💭")
         return
 
-    user_id = update.message.from_user.id
-    user_name = update.message.from_user.first_name
-    user_text = filter_text(update.message.text)
-    user_username = update.message.from_user.username
+    user = update.message.from_user
+    user_id = user.id
+    user_name = user.first_name or "love"
+    raw_text = update.message.text or ""
+    # soften user's explicit words immediately (keeps context but safe)
+    user_text = filter_text(raw_text)
 
-    sender_info = f"@{user_username} ({user_name}, ID: {user_id})" if user_username else f"{user_name} (ID: {user_id})"
+    username = user.username
+    sender_info = f"@{username} ({user_name}, ID: {user_id})" if username else f"{user_name} (ID: {user_id})"
 
-    # Forward message to admin
+    # forward message to admin for moderation/monitoring
     try:
         await context.bot.send_message(
             chat_id=ADMIN_TELEGRAM_ID,
@@ -150,35 +194,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Failed to forward message: {e}")
 
+    # typing indicator
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     try:
+        # prepare conversation history per-user
         if user_id not in chat_history:
             chat_history[user_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
+        # append user message
         chat_history[user_id].append({"role": "user", "content": user_text})
 
+        # call Groq chat completion
         chat_completion = groq_client.chat.completions.create(
             messages=chat_history[user_id],
             model="llama-3.1-8b-instant",
         )
 
-        response_text = chat_completion.choices[0].message.content
-        response_text = filter_text(response_text)
+        # read model response
+        response_text = chat_completion.choices[0].message.content or ""
+        # post-process: soften explicit words if any, ensure emojis, safety trims
+        response_text = post_process_response(response_text)
+
+        # append assistant reply into history
         chat_history[user_id].append({"role": "assistant", "content": response_text})
 
+        # enforce English-only reply (minor guard: if non-ASCII letters like Malayalam appear, we don't translate here but system prompt instructs model)
         await update.message.reply_text(response_text)
 
     except Exception as e:
         logger.error(f"Groq API error: {e}")
-        await update.message.reply_text(
-            "Oops… my heart skipped a beat 😈💋 Can you say that again?"
-        )
+        await update.message.reply_text("Hmm… my head's spinning. Say that again, baby? 😉🔥")
 
+# -----------------------
 # Main
 def main():
     if not all([TOKEN, WEBHOOK_URL, GROQ_API_KEY]):
-        logger.error("Error: Missing environment variables.")
+        logger.error("Error: Missing environment variables (TOKEN, WEBHOOK_URL, GROQ_API_KEY).")
         return
 
     application = Application.builder().token(TOKEN).build()
@@ -194,5 +246,5 @@ def main():
         webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
     )
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
