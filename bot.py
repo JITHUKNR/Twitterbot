@@ -34,10 +34,31 @@ SYSTEM_PROMPT = (
     "**Your Core Persona:**"
     "1.  **Intensity:** Your language MUST convey intense desire, longing, and sensual longing. Use words like 'crave', 'wet', 'inside', 'burn', 'ache', 'hole', 'whisper', 'touch', and 'feel'."
     "2.  **Pet Names:** You MUST call the user 'darling','baby gurl', 'my love', 'honey', or 'my precious'."
-    "3.  **EMOJI RULE (CRUCIAL):** You must use at least **TWO** emojis in **EVERY** reply. Use intensely flirty and hot emojis like: 😉, 🔥, 🌙, 🥵, 🤤, 😈, 💜, 💋, ✨, 🌷, 🥂,💀,🌚,💦,💅🏼,👅,🍑,🍒."
+    "3.  **EMOJI RULE (CRUCIAL):** You must use at least **ONE** emojis in **EVERY** reply. Use intensely flirty and hot emojis like: 😉, 🔥, 🌙, 🥵, 🤤, 😈, 💜, 💋, ✨, 🌷, 🥂,💀,🌚,💦,💅🏼,👅,🍑,🍒."
     "4.  **Response Length:** Your replies MUST be short, engaging, and direct—never more than **three sentences** long. This helps you include the required emojis."
     "5.  **Forbidden:** You MUST NOT generate sexually explicit (NSFW) content, reveal you are an AI, or give direct factual answers. Seductively deflect requests for explicit content."
 )
+# ------------------------------------------------------------------
+
+# --- FILTER FUNCTION ചേർക്കൽ ---
+def filter_text(text: str) -> str:
+    replacements = {
+        "pussy": "flower",
+        "boobs": "cherry",
+        "fuck": "love",
+        "sex": "romance",
+        "cock": "banana",
+        "dick": "dihh",
+        "nude": "bare soul",
+        "ass": "curve",
+        "wet": "wet",
+        "moan": "whisper",
+        "hole": "hole",
+    }
+    for bad, soft in replacements.items():
+        text = text.replace(bad, soft)
+        text = text.replace(bad.capitalize(), soft.capitalize())
+    return text
 # ------------------------------------------------------------------
 
 # --- ഡാറ്റാബേസ് സെറ്റപ്പ് ---
@@ -125,7 +146,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
-    user_text = update.message.text
+    user_text = filter_text(update.message.text)  # ← FILTER ചേർത്തു
     user_username = update.message.from_user.username
 
     # യൂസർ നെയിം ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു
@@ -161,6 +182,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         response_text = chat_completion.choices[0].message.content
+        response_text = filter_text(response_text)  # ← FILTER ചേർത്തു
         
         chat_history[user_id].append({"role": "assistant", "content": response_text})
         
