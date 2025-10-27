@@ -26,7 +26,8 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # --- അഡ്മിൻ ID-കളും ചാനൽ ID-യും ---
 ADMIN_TELEGRAM_ID = 7567364364 
-ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') # Render-ൽ സെറ്റ് ചെയ്ത ID
+# Render-ൽ സെറ്റ് ചെയ്ത ID (ഉദാ: -1002992093797)
+ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
@@ -381,7 +382,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ചാനൽ മെസ്സേജുകൾ ആണെങ്കിൽ, മീഡിയ ശേഖരിക്കുന്നു
     if str(update.message.chat_id) == str(ADMIN_CHANNEL_ID):
         await collect_media(update, context) 
-        return 
+        return # ചാനൽ മെസ്സേജ് സേവ് ചെയ്ത ശേഷം ഇവിടെ നിർത്തുന്നു
 
     if not groq_client:
         await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
@@ -452,8 +453,9 @@ def main():
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
     
-    # --- പുതിയ ഹാൻഡ്ലർ ലോജിക് ഇവിടെയാണ് ---
-    # ചാനൽ മീഡിയയും യൂസർ ടെക്സ്റ്റും കൈകാര്യം ചെയ്യാൻ:
+    # --- മീഡിയ കളക്ഷനും ചാറ്റിനുമുള്ള ഹാൻഡ്ലർ ---
+    # ഫോട്ടോ/വീഡിയോ/ടെക്സ്റ്റ് വന്നാൽ handle_message വിളിക്കുന്നു. 
+    # ഇത് ചാനൽ ID പരിശോധിച്ച് മീഡിയ ശേഖരിക്കുകയോ, AI ചാറ്റ് നടത്തുകയോ ചെയ്യും.
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, handle_message))
     # --------------------------------------
 
