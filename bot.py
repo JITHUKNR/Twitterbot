@@ -23,11 +23,10 @@ WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
-# ADMIN_CHANNEL_ID-ക്ക് ഡിഫോൾട്ട് വാല്യൂ നൽകുന്നു. ഇത് Render-ൽ സെറ്റ് ചെയ്യണം.
-ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 
-# --- അഡ്മിൻ ID: മെസ്സേജുകൾ ഫോർവേഡ് ചെയ്യാനുള്ള നിങ്ങളുടെ ടെലിഗ്രാം ID ---
+# --- അഡ്മിൻ ID-കളും ചാനൽ ID-യും ---
 ADMIN_TELEGRAM_ID = 7567364364 
+ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') # Render-ൽ സെറ്റ് ചെയ്ത ID
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
@@ -42,7 +41,7 @@ SYSTEM_PROMPT = (
 
 # --- ഡാറ്റാബേസ് സെറ്റപ്പ് വേരിയബിളുകൾ ---
 db_connection = None
-db_connection_initialized = False # ഡാറ്റാബേസ് ടേബിളുകൾ ഉണ്ടാക്കിയിട്ടുണ്ടോ എന്ന് അറിയാൻ
+db_connection_initialized = False
 # ------------------------------------
 
 # --- Groq AI ക്ലയന്റ് സെറ്റപ്പ് ---
@@ -56,7 +55,7 @@ try:
 except Exception as e:
     logger.error(f"Groq AI setup failed: {e}")
 
-# 💦 Mood-based emoji generator (നിങ്ങൾ നൽകിയ ഫംഗ്ഷൻ)
+# 💦 Mood-based emoji generator 
 def add_emojis_based_on_mood(text):
     text_lower = text.lower()
     if any(word in text_lower for word in ["love", "sweetheart", "darling", "kiss", "romantic", "mine", "heart"]):
@@ -379,9 +378,10 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ഈ ഫംഗ്ഷൻ നിങ്ങളുടെ ചാനൽ മീഡിയ ID-കൾ ശേഖരിക്കാൻ ഉപയോഗിക്കുന്നു
+    # ചാനൽ മെസ്സേജുകൾ ആണെങ്കിൽ, മീഡിയ ശേഖരിക്കുന്നു
     if str(update.message.chat_id) == str(ADMIN_CHANNEL_ID):
-        await collect_media(update, context) # മീഡിയ ശേഖരിക്കുന്ന ഫംഗ്ഷൻ വിളിക്കുന്നു
-        return # ചാനലിലെ മെസ്സേജുകൾക്ക് AI മറുപടി നൽകേണ്ടതില്ല
+        await collect_media(update, context) 
+        return 
 
     if not groq_client:
         await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
@@ -451,7 +451,11 @@ def main():
     application.add_handler(CommandHandler("broadcast", broadcast_message))
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # --- പുതിയ ഹാൻഡ്ലർ ലോജിക് ഇവിടെയാണ് ---
+    # ചാനൽ മീഡിയയും യൂസർ ടെക്സ്റ്റും കൈകാര്യം ചെയ്യാൻ:
+    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, handle_message))
+    # --------------------------------------
 
     # വെബ്ഹൂക്ക് സെറ്റപ്പ് (24/7 ഹോസ്റ്റിങ്ങിന്)
     logger.info(f"Starting webhook on port {PORT}")
