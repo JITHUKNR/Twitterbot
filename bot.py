@@ -26,7 +26,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # --- അഡ്മിൻ ID-കളും ചാനൽ ID-യും ---
 ADMIN_TELEGRAM_ID = 7567364364 
-# Render-ൽ സെറ്റ് ചെയ്ത ID (ഇതൊരു സ്ട്രിംഗ് ആയിരിക്കണം)
+# Render-ൽ സെറ്റ് ചെയ്ത ID (ഇതൊരു സ്ട്രിംഗ് ആയിരിക്കും, ഉപയോഗിക്കുമ്പോൾ ഇൻ്റിജർ ആക്കണം)
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 # ------------------------------------------------------------------
 
@@ -125,6 +125,8 @@ async def establish_db_connection():
 # --- പുതിയ ഫംഗ്ഷൻ: മീഡിയ ID-കൾ ഡാറ്റാബേസിൽ ശേഖരിക്കുന്നു ---
 # ------------------------------------------------------------------
 async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    
+    # ഈ ഫംഗ്ഷൻ വിളിക്കുന്നത് ചാനൽ മെസ്സേജുകൾ വന്നാൽ മാത്രമാണ്.
     message = update.message
     message_id = message.message_id
     file_id = None
@@ -369,12 +371,25 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Database connection failed. Cannot fetch user list.")
 
 
+# ------------------------------------------------------------------
+# --- ചാനൽ മെസ്സേജുകൾക്കായുള്ള പ്രത്യേക ഹാൻഡ്ലർ (മീഡിയ ശേഖരണത്തിനായി) ---
+# ------------------------------------------------------------------
+async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ഈ ഫംഗ്ഷൻ ചാനൽ മെസ്സേജുകൾ വന്നാൽ മാത്രം പ്രവർത്തിക്കും
+    try:
+        # chat_id-യെ integer ആക്കി താരതമ്യം ചെയ്യുന്നു
+        if update.message.chat_id == int(ADMIN_CHANNEL_ID):
+            await collect_media(update, context) 
+            return # മീഡിയ ശേഖരിച്ച ശേഷം ഇവിടെ നിർത്തുന്നു
+    except Exception as e:
+        logger.error(f"Error checking channel ID or collecting media: {e}")
+        return
+
+
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ചാനലിൽ മീഡിയ പോസ്റ്റ് ചെയ്യുമ്പോൾ, AI ചാറ്റ് ഒഴിവാക്കി മീഡിയ ശേഖരിക്കുന്നു
-    if str(update.message.chat_id) == str(ADMIN_CHANNEL_ID):
-        await collect_media(update, context) 
-        return # മീഡിയ സേവ് ചെയ്ത ശേഷം ഇവിടെ നിർത്തുന്നു
+    
+    # ഈ ഫംഗ്ഷൻ പ്രൈവറ്റ് ചാറ്റുകൾക്ക് മാത്രമാണ് (കമാൻഡുകൾ ഒഴികെ)
 
     if not groq_client:
         await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
@@ -445,9 +460,12 @@ def main():
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
     
-    # --- മീഡിയ കളക്ഷനും ചാറ്റിനുമുള്ള ഹാൻഡ്ലർ (പരിഹാരം) ---
-    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, handle_message))
-    # --------------------------------------
+    # 1. ചാനൽ മീഡിയ കളക്ഷൻ ഹാൻഡ്ലർ (ചാനൽ ID-യും മീഡിയയും വന്നാൽ മാത്രം)
+    # ഇത് ചാനൽ മെസ്സേജുകൾ വന്നാൽ channel_message_handler-നെ വിളിക്കുന്നു.
+    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
+
+    # 2. AI ചാറ്റ് ഹാൻഡ്ലർ (പ്രൈവറ്റ് മെസ്സേജ് വന്നാൽ മാത്രം)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
     # വെബ്ഹൂക്ക് സെറ്റപ്പ് (24/7 ഹോസ്റ്റിങ്ങിന്)
     logger.info(f"Starting webhook on port {PORT}")
