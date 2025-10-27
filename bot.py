@@ -35,14 +35,15 @@ SYSTEM_PROMPT = (
 def filter_text(text: str) -> str:
     replacements = {
         "pussy": "flower",
-        "boobs": "petals",
-        "fuck": "love",
+        "boobs": "cherry",
+        "fuck": "Let me make you mine",
         "sex": "romance",
-        "cock": "flame",
-        "dick": "sword",
+        "cock": "banana",
+        "dick": "dihh",
         "nude": "bare soul",
-        "ass": "curve",
-        "wet": "warm",
+        "ass": "ass",
+        "fingering": "fingering",
+        "wet": "wet",
         "moan": "whisper",
     }
     for bad, soft in replacements.items():
