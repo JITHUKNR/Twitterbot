@@ -4,12 +4,13 @@ import psycopg2
 import urllib.parse as up
 import asyncio
 import random
+# requests ലൈബ്രറി ഇവിടെയാണ് ഇമ്പോർട്ട് ചെയ്യുന്നത്
+import requests 
 from groq import Groq
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden, BadRequest 
-import requests # ചിത്രങ്ങൾ എടുക്കാൻ ആവശ്യമാണ്
 
 # ലോഗിംഗ് സെറ്റപ്പ്
 logging.basicConfig(
@@ -17,14 +18,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Environment Variables-ഉം ലോഡ് ചെയ്യുന്നു ---
+# --- Environment Variables-ഉം ലോഡ് ചെയ്യുന്നു (Render ഉപയോഗത്തിനായി) ---
 TOKEN = os.environ.get('TOKEN') 
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 # GOOGLE_SEARCH_API_KEY = os.environ.get('GOOGLE_SEARCH_API_KEY') # API Key ആവശ്യമില്ല
-# GOOGLE_CSE_ID = os.environ.get('GOOGLE_CSE_ID') # CSE ID ആവശ്യമില്ല
 
 # --- അഡ്മിൻ ID: മെസ്സേജുകൾ ഫോർവേഡ് ചെയ്യാനുള്ള നിങ്ങളുടെ ടെലിഗ്രാം ID ---
 ADMIN_TELEGRAM_ID = 7567364364 
@@ -94,13 +94,45 @@ def add_emojis_based_on_mood(text):
     else:
         return text + " 😉💞"
 
+# ------------------------------------------------------------------
+# --- ഡാറ്റാബേസ് കണക്ഷൻ വീണ്ടും സ്ഥാപിക്കാൻ ശ്രമിക്കുന്ന ഫംഗ്ഷൻ ---
+# ------------------------------------------------------------------
+async def establish_db_connection():
+    global db_connection
+    if db_connection is not None:
+        try:
+            with db_connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            return True
+        except Exception:
+            db_connection = None
+    
+    # വീണ്ടും കണക്ട് ചെയ്യാൻ ശ്രമിക്കുന്നു
+    try:
+        if not DATABASE_URL: return False
+        up.uses_netloc.append("postgres")
+        db_url = up.urlparse(DATABASE_URL)
+        db_connection = psycopg2.connect(
+            database=db_url.path[1:],
+            user=db_url.username,
+            password=db_url.password,
+            host=db_url.hostname,
+            port=db_url.port
+        )
+        logger.info("Database re-established connection successfully.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to re-establish DB connection: {e}")
+        db_connection = None
+        return False
+
 # /start കമാൻഡ്
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
     
     # ഡാറ്റാബേസ് ലോജിക്: യൂസറെ ചേർക്കുന്നു
-    if db_connection:
+    if await establish_db_connection():
         try:
             with db_connection.cursor() as cursor:
                 cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
@@ -124,7 +156,7 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     count = 0
-    if db_connection:
+    if await establish_db_connection():
         try:
             with db_connection.cursor() as cursor:
                 cursor.execute("SELECT COUNT(user_id) FROM users")
@@ -141,12 +173,7 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_pinterest_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Searching for the perfect BTS photo... wait for Tae. 😉")
     
-    # Google Search API-യിൽ നിന്ന് BTS ഫോട്ടോകൾ തിരയുന്നു (ഇതൊരു ഫിക്സഡ് തിരച്ചിലാണ്)
-    search_query = "BTS Taekook V Jungkook aesthetic photo Pinterest high quality"
-    
-    # Search URL ഉപയോഗിച്ച് ചിത്രങ്ങൾ എടുക്കുന്നു
-    # ഇത് Google Search Tool-ൻ്റെ ഒരു സിമുലേഷനാണ്, API കീ ആവശ്യമില്ല
-    
+    # Pinterest/Google-ന് API ഇല്ലാത്തതിനാൽ, ഇവിടെ സ്ഥിരമായ ചിത്രങ്ങൾ ഉപയോഗിക്കുന്നു.
     image_urls = [
         "https://placehold.co/400x550/228B22/FFFFFF?text=TaeKook+Aesthetic",
         "https://placehold.co/400x550/5F9EA0/FFFFFF?text=BTS+V+Jungkook",
@@ -154,21 +181,7 @@ async def send_pinterest_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         "https://placehold.co/400x550/8A2BE2/FFFFFF?text=Romantic+Moment",
     ]
     
-    # യഥാർത്ഥ Google Search (Google Search Tool ഉപയോഗിച്ച്)
-    # Note: For security reasons and to avoid requiring external API keys, 
-    # we simulate the search by calling the internal Google search function.
     try:
-        # ഇവിടെ നമ്മൾ Gemini-യുടെ ടൂൾ ഫങ്ക്ഷൻ ഉപയോഗിച്ച് Google Search നടത്തുന്നു
-        search_result = await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id, 
-            action=ChatAction.TYPING
-        )
-        
-        # ഇവിടെ Google Search Tool Call ചെയ്യേണ്ട കോഡ് ആണ് വരേണ്ടത്.
-        # പക്ഷെ, Telegram Bot API-ൽ Gemini Search Tool നേരിട്ട് വിളിക്കാൻ കഴിയില്ല.
-        # അതിനാൽ, നമുക്ക് ഒരു mock search result ഉണ്ടാക്കാം, അല്ലെങ്കിൽ ഒരു ഫിക്സഡ് ലിസ്റ്റ് ഉപയോഗിക്കാം.
-
-        # ട്വിറ്റർ ചെയ്തതുപോലെ, ഇവിടെ ഫിക്സഡ് ലിസ്റ്റ് ഉപയോഗിച്ച് റാൻഡം ആയി ഒരെണ്ണം അയയ്ക്കാം:
         random_url = random.choice(image_urls)
         caption_text = random.choice([
             "Just for you, my precious. 😉", 
@@ -177,12 +190,12 @@ async def send_pinterest_photo(update: Update, context: ContextTypes.DEFAULT_TYP
             "This picture reminds me of us. 🌙"
         ])
         
+        # ഇവിടെ ചിത്രം അയക്കുന്നു
         await update.message.reply_photo(photo=random_url, caption=caption_text)
         
     except Exception as e:
         logger.error(f"Pinterest Search/Photo sending failed: {e}")
-        await update.message.reply_text("Tae can't find the photo right now, my love. Something went wrong with the connection. 😔")
-
+        await update.message.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
 
 # ------------------------------------------------------------------
 # --- ടെക്സ്റ്റ് ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/broadcast) ---
@@ -200,13 +213,8 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     broadcast_text = " ".join(context.args)
     
-    if db_connection:
+    if await establish_db_connection():
         try:
-            # ഡാറ്റാബേസ് കണക്ഷൻ വീണ്ടും സ്ഥാപിക്കാൻ ശ്രമിക്കുന്നു
-            if not await establish_db_connection():
-                await update.message.reply_text("Database connection failed. Cannot fetch user list.")
-                return
-
             with db_connection.cursor() as cursor:
                 cursor.execute("SELECT user_id FROM users")
                 all_users = [row[0] for row in cursor.fetchall()]
@@ -243,13 +251,12 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Broadcast database error: {e}")
             await update.message.reply_text(f"Broadcast database error occurred: {e}")
     else:
-        await update.message.reply_text("Database connection unavailable. Cannot fetch user list.")
+        await update.message.reply_text("Database connection failed. Cannot fetch user list.")
 
 # ------------------------------------------------------------------
 # --- മീഡിയ ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/bmedia) ---
 # ------------------------------------------------------------------
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (നിലവിലുള്ള bmedia_broadcast ഫംഗ്ഷൻ ഇവിടെ ചേർക്കുന്നു)
     user_id = update.message.from_user.id
     
     if user_id != ADMIN_TELEGRAM_ID:
@@ -258,8 +265,12 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_msg = update.message.reply_to_message
     
-    if not reply_msg or (not reply_msg.photo and not reply_msg.video):
-        await update.message.reply_text("ERROR: You must reply to the Photo or Video you want to broadcast.")
+    if not reply_msg:
+        await update.message.reply_text("ERROR: You must REPLY to the Photo or Video you want to broadcast.")
+        return
+        
+    if not reply_msg.photo and not reply_msg.video:
+        await update.message.reply_text("ERROR: The message you replied to does not contain a Photo or Video.")
         return
 
     file_id = None
@@ -280,11 +291,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not caption:
         caption = "Tae's special post!"
 
-    if db_connection:
-        if not await establish_db_connection():
-            await update.message.reply_text("Database connection failed. Cannot fetch user list.")
-            return
-            
+    if await establish_db_connection():
         try:
             with db_connection.cursor() as cursor:
                 cursor.execute("SELECT user_id FROM users")
@@ -324,41 +331,9 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Media Broadcast database error: {e}")
             await update.message.reply_text(f"Media Broadcast database error occurred: {e}")
     else:
-        await update.message.reply_text("Database connection unavailable. Cannot fetch user list.")
+        await update.message.reply_text("Database connection failed. Cannot fetch user list.")
 
-# ------------------------------------------------------------------
-# --- ഡാറ്റാബേസ് കണക്ഷൻ വീണ്ടും സ്ഥാപിക്കാൻ ശ്രമിക്കുന്ന ഫംഗ്ഷൻ ---
-# ------------------------------------------------------------------
-async def establish_db_connection():
-    global db_connection
-    if db_connection is not None:
-        try:
-            # കണക്ഷൻ ഇപ്പോഴും പ്രവർത്തിക്കുന്നുണ്ടോ എന്ന് പരിശോധിക്കുന്നു
-            with db_connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-            return True
-        except Exception:
-            db_connection = None # കണക്ഷൻ നിലവിലില്ല
-    
-    # വീണ്ടും കണക്ട് ചെയ്യാൻ ശ്രമിക്കുന്നു
-    try:
-        if not DATABASE_URL: return False
-        up.uses_netloc.append("postgres")
-        db_url = up.urlparse(DATABASE_URL)
-        db_connection = psycopg2.connect(
-            database=db_url.path[1:],
-            user=db_url.username,
-            password=db_url.password,
-            host=db_url.hostname,
-            port=db_url.port
-        )
-        logger.info("Database re-established connection successfully.")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to re-establish DB connection: {e}")
-        db_connection = None
-        return False
-        
+
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client:
@@ -428,7 +403,7 @@ def main():
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("broadcast", broadcast_message))
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
-    application.add_handler(CommandHandler("pinterest", send_pinterest_photo)) # <-- പുതിയ കമാൻഡ്
+    application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # വെബ്ഹൂക്ക് സെറ്റപ്പ് (24/7 ഹോസ്റ്റിങ്ങിന്)
