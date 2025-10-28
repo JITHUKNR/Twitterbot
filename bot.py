@@ -8,10 +8,14 @@ import requests
 from groq import Groq
 from telegram import Update
 from telegram.constants import ChatAction
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler # <-- CallbackQueryHandler ചേർത്തു
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup # <-- Inline ബട്ടൺ ക്ലാസുകൾ ചേർത്തു
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup 
 from datetime import datetime, timedelta, timezone 
+
+# -------------------- കൂൾഡൗൺ സമയം --------------------
+COOLDOWN_TIME_SECONDS = 180 # 3 മിനിറ്റ് = 180 സെക്കൻഡ്
+# --------------------------------------------------------
 
 # ലോഗിംഗ് സെറ്റപ്പ്
 logging.basicConfig(
@@ -124,6 +128,13 @@ async def establish_db_connection():
                         sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
+                # <-- പുതിയ ടേബിൾ: കൂൾഡൗൺ ട്രാക്ക് ചെയ്യാൻ
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS cooldown (
+                        user_id BIGINT PRIMARY KEY,
+                        last_command_time TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
+                    );
+                """)
             db_connection.commit()
             db_connection_initialized = True
             
@@ -219,26 +230,65 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Failed to fetch user count: {e}")
             db_connection.rollback()
     
-    # ഇവിടെ update.message.reply_text ഉപയോഗിക്കുന്നതിനു പകരം context.bot.send_message ഉപയോഗിക്കുന്നു
-    # ഇത് button_handler-ൽ നിന്ന് വിളിക്കുമ്പോഴുള്ള പ്രശ്നം ഒഴിവാക്കാൻ
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Total users: {count}")
 
 # ------------------------------------------------------------------
-# --- New ഫംഗ്ഷൻ (/new) ---
+# --- New ഫംഗ്ഷൻ (/new) - കൂൾഡൗൺ ലോജിക്കോടുകൂടി ---
 # ------------------------------------------------------------------
 async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    current_time = datetime.now(timezone.utc) # UTC സമയം ഉപയോഗിക്കുന്നു
+    
     # കമാൻഡ് മെസ്സേജിൽ നിന്നോ ബട്ടൺ ക്ലിക്കിൽ നിന്നോ ഉള്ള മെസ്സേജ് ഒബ്ജക്റ്റ് എടുക്കുന്നു
     if update.message is None:
         message_obj = update.callback_query.message
     else:
         message_obj = update.message
         
-    await message_obj.reply_text("Searching for the perfect photo... wait for Tae. 😉")
-    
     if not await establish_db_connection():
         await message_obj.reply_text("Database connection failed. Cannot fetch media list.")
         return
 
+    # 1. കൂൾഡൗൺ പരിശോധിക്കുന്നു
+    try:
+        with db_connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT last_command_time FROM cooldown WHERE user_id = %s", (user_id,)
+            )
+            result = cursor.fetchone()
+            
+            if result and result[0]:
+                # PostgreSQL ൽ നിന്ന് കിട്ടുന്ന സമയം UTC ആയി കണക്കാക്കുന്നു
+                last_time = result[0].replace(tzinfo=timezone.utc) 
+                elapsed = current_time - last_time
+                
+                if elapsed.total_seconds() < COOLDOWN_TIME_SECONDS:
+                    remaining_seconds = COOLDOWN_TIME_SECONDS - elapsed.total_seconds()
+                    remaining_minutes = int(remaining_seconds / 60)
+                    
+                    if remaining_minutes >= 1:
+                        # 1 മിനിറ്റ് മുഴുവനായി ഉണ്ടെങ്കിൽ മിനിറ്റിൽ മറുപടി നൽകുന്നു
+                        await message_obj.reply_text(
+                            f"Slow down, darling! You need to wait {remaining_minutes} more minutes "
+                            f"before you can request a new photo. Take a breath. 😉"
+                        )
+                        return
+                    else:
+                        # 1 മിനിറ്റിൽ താഴെയാണെങ്കിൽ സെക്കൻഡിൽ മറുപടി നൽകുന്നു
+                        await message_obj.reply_text(
+                            f"Slow down, darling! Wait {int(remaining_seconds)} more seconds. "
+                            f"I'm worth the wait, I promise. 😉"
+                        )
+                        return
+    except Exception as e:
+        logger.error(f"Cooldown check failed: {e}")
+        # ഡാറ്റാബേസ് എറർ വന്നാൽ പോലും മുന്നോട്ട് പോകുന്നു (കൂൾഡൗൺ ലോജിക് ഒഴിവാക്കുന്നു)
+        db_connection.rollback() 
+
+
+    await message_obj.reply_text("Searching for the perfect photo... wait for Tae. 😉")
+
+    # 2. മീഡിയ അയക്കുന്നു
     try:
         with db_connection.cursor() as cursor:
             # ഡാറ്റാബേസിൽ നിന്ന് റാൻഡം ആയി ഒരു മീഡിയ ID എടുക്കുന്നു
@@ -271,20 +321,27 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  await message_obj.reply_text("Found a media, but the type is unknown.")
                  return
 
-            # അയച്ച മെസ്സേജ് ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു (24 മണിക്കൂർ ഡിലീറ്റ് ലോജിക്കിന്)
+            # 3. കൂൾഡൗൺ ടൈമും അയച്ച മെസ്സേജും അപ്ഡേറ്റ് ചെയ്യുന്നു
             with db_connection.cursor() as cursor:
+                 # കൂൾഡൗൺ ടൈം അപ്ഡേറ്റ് ചെയ്യുന്നു (നിലവിലെ UTC സമയം ഉപയോഗിച്ച്)
+                 cursor.execute(
+                    "INSERT INTO cooldown (user_id, last_command_time) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET last_command_time = EXCLUDED.last_command_time;",
+                    (user_id, current_time) # ഇവിടെ current_time (UTC) ഉപയോഗിക്കുന്നു
+                 )
+                 # അയച്ച മെസ്സേജ് 24 മണിക്കൂർ ഡിലീറ്റിനായി സേവ് ചെയ്യുന്നു
                  cursor.execute(
                      "INSERT INTO sent_media (chat_id, message_id) VALUES (%s, %s)",
                      (message_obj.chat_id, sent_msg.message_id)
                  )
             db_connection.commit()
-            logger.info(f"Sent media saved to be deleted later: Chat ID {message_obj.chat_id}")
+            logger.info(f"Sent media saved and cooldown updated for user {user_id}.")
 
         else:
             await message_obj.reply_text("I haven't collected any photos yet, baby. Ask the admin to post some! 😔")
         
     except Exception as e:
         logger.error(f"Media sending failed: {e}")
+        db_connection.rollback()
         await message_obj.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
 
 # ------------------------------------------------------------------
@@ -364,8 +421,6 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         deleted_count = 0
         total_count = len(all_media)
 
-        # (തുടർന്നുള്ള ലോജിക് മുമ്പുള്ളതുപോലെ)
-
         for message_id, media_type, file_id in all_media:
             try:
                 if media_type == 'photo':
@@ -411,8 +466,8 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except Exception as e:
         logger.error(f"Cleanup failed: {e}")
-        await message_obj.reply_text(f"Cleanup process encountered a critical error: {e}")
         db_connection.rollback()
+        await message_obj.reply_text(f"Cleanup process encountered a critical error: {e}")
 
 # ------------------------------------------------------------------
 # --- ADMIN മെനു ഫംഗ്ഷൻ (/admin) ---
