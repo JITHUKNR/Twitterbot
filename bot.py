@@ -84,16 +84,31 @@ def add_emojis_based_on_mood(text):
 # ------------------------------------------------------------------
 async def establish_db_connection():
     global db_connection, db_connection_initialized
+    
+    # 1. നിലവിലെ കണക്ഷൻ സാധുവാണോ എന്ന് പരിശോധിക്കുന്നു
     if db_connection is not None:
         try:
             with db_connection.cursor() as cursor:
+                # ഒരു ലളിതമായ query നടത്തി കണക്ഷൻ ജീവനോടെയുണ്ടോ എന്ന് നോക്കുന്നു
                 cursor.execute("SELECT 1")
             return True
-        except Exception:
-            db_connection = None
-    
+        except Exception as e:
+            logger.warning(f"Existing DB connection failed health check or query failed: {e}. Attempting reconnection.")
+            db_connection = None # കണക്ഷൻ നഷ്ടപ്പെട്ടാൽ None ആക്കുന്നു
+            # പരാജയപ്പെട്ട ട്രാൻസാക്ഷൻ rollback ചെയ്യാൻ ശ്രമിക്കുന്നു (Aborted issue പരിഹരിക്കാൻ)
+            try:
+                if db_connection and not db_connection.closed:
+                    db_connection.rollback()
+            except:
+                pass
+
+    # 2. DATABASE_URL ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു
+    if not DATABASE_URL:
+        logger.error("DATABASE_URL is not set.")
+        return False
+        
+    # 3. പുതിയ കണക്ഷൻ സ്ഥാപിക്കാൻ ശ്രമിക്കുന്നു
     try:
-        if not DATABASE_URL: return False
         up.uses_netloc.append("postgres")
         db_url = up.urlparse(DATABASE_URL)
         db_connection = psycopg2.connect(
@@ -101,17 +116,19 @@ async def establish_db_connection():
             user=db_url.username,
             password=db_url.password,
             host=db_url.hostname,
-            port=db_url.port
+            port=db_url.port,
+            # നെറ്റ്വർക്ക് ടൈംഔട്ട് പ്രശ്നം പരിഹരിക്കാൻ ചില പാരാമീറ്ററുകൾ ചേർക്കുന്നു
+            connect_timeout=10 
         )
+        
+        # 4. ടേബിളുകൾ ഉണ്ടാക്കുന്നു (ആദ്യം മാത്രം)
         if not db_connection_initialized:
-            # ടേബിളുകൾ ഉണ്ടാക്കുന്നു (ആദ്യം മാത്രം)
             with db_connection.cursor() as cursor:
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         user_id BIGINT PRIMARY KEY,
                         first_name TEXT,
                         joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        -- 🌟 പുതിയ കോളം: മീഡിയ അയക്കാനുള്ള അനുമതി ട്രാക്ക് ചെയ്യാൻ 🌟
                         allow_media BOOLEAN DEFAULT TRUE 
                     );
                 """)
@@ -130,7 +147,6 @@ async def establish_db_connection():
                         sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
-                # <-- കൂൾഡൗൺ ട്രാക്ക് ചെയ്യാൻ
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS cooldown (
                         user_id BIGINT PRIMARY KEY,
@@ -140,7 +156,7 @@ async def establish_db_connection():
             db_connection.commit()
             db_connection_initialized = True
             
-        # 🌟 നിലവിലുള്ള യൂസർ ടേബിളിൽ allow_media കോളം ഇല്ലെങ്കിൽ ചേർക്കുന്നു (Backwards Compatibility) 🌟
+        # allow_media കോളം ഇല്ലെങ്കിൽ ചേർക്കുന്നു
         try:
             with db_connection.cursor() as cursor:
                 cursor.execute("SELECT allow_media FROM users LIMIT 0")
@@ -150,11 +166,12 @@ async def establish_db_connection():
             db_connection.commit()
             logger.info("Added 'allow_media' column to users table.")
 
-        logger.info("Database re-established connection successfully.")
+        logger.info("Database connection successfully established/re-established.")
         return True
+    
     except Exception as e:
-        logger.error(f"Failed to re-establish DB connection: {e}")
-        db_connection = None
+        logger.error(f"Failed to establish DB connection: {e}")
+        db_connection = None # കണക്ഷൻ പരാജയപ്പെട്ടാൽ അത് None ആക്കുന്നു
         return False
 
 # ------------------------------------------------------------------
@@ -189,7 +206,12 @@ async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"Media collected: ID {message_id}, Type {file_type}")
         except Exception as e:
             logger.error(f"Failed to save media ID to DB: {e}")
-            db_connection.rollback()
+            # ഇവിടെ വീണ്ടും rollback ചേർക്കുന്നത്, connection abort ആവാതിരിക്കാൻ സഹായിക്കും
+            try:
+                db_connection.rollback()
+            except:
+                pass
+
 
 # ------------------------------------------------------------------
 # --- ചാനൽ മീഡിയ മെസ്സേജ് ഹാൻഡ്ലർ ---
@@ -213,7 +235,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with db_connection.cursor() as cursor:
                 # യൂസറെ ചേർക്കുകയോ, ഉണ്ടെങ്കിൽ പേര്, മീഡിയാ പെർമിഷൻ എന്നിവ അപ്ഡേറ്റ് ചെയ്യുകയോ ചെയ്യുന്നു
-                # പുതിയ യൂസർമാർക്ക് default ആയി allow_media = TRUE നൽകുന്നു.
                 cursor.execute("""
                     INSERT INTO users (user_id, first_name, allow_media) 
                     VALUES (%s, %s, TRUE) 
@@ -223,7 +244,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"User added/updated: {user_id}")
         except Exception as e:
             logger.error(f"Failed to add/update user to DB: {e}")
-            db_connection.rollback()
+            try:
+                db_connection.rollback()
+            except:
+                pass
 
     if user_id in chat_history:
         del chat_history[user_id]
@@ -252,7 +276,10 @@ async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         logger.error(f"Failed to set allow_media to False: {e}")
-        db_connection.rollback()
+        try:
+            db_connection.rollback()
+        except:
+            pass
         await update.message.reply_text("My circuits are acting up, baby. Couldn't update your setting.")
 
 # ------------------------------------------------------------------
@@ -276,7 +303,10 @@ async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         logger.error(f"Failed to set allow_media to True: {e}")
-        db_connection.rollback()
+        try:
+            db_connection.rollback()
+        except:
+            pass
         await update.message.reply_text("My circuits are acting up, baby. Couldn't update your setting.")
 
 # /users കമാൻഡ് (യൂസർ കൗണ്ട്)
@@ -293,7 +323,10 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 count = cursor.fetchone()[0]
         except Exception as e:
             logger.error(f"Failed to fetch user count: {e}")
-            db_connection.rollback()
+            try:
+                db_connection.rollback()
+            except:
+                pass
     
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Total users: {count}")
 
@@ -331,7 +364,10 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
     except Exception as e:
         logger.error(f"Allow media check failed: {e}")
-        db_connection.rollback() 
+        try:
+            db_connection.rollback()
+        except:
+            pass
         # ഡാറ്റാബേസ് എറർ വന്നാൽ പോലും മുന്നോട്ട് പോകുന്നു (മീഡിയാ പെർമിഷൻ ഒഴിവാക്കുന്നു)
         pass 
 
@@ -369,7 +405,10 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Cooldown check failed: {e}")
         # ഡാറ്റാബേസ് എറർ വന്നാൽ പോലും മുന്നോട്ട് പോകുന്നു (കൂൾഡൗൺ ലോജിക് ഒഴിവാക്കുന്നു)
-        db_connection.rollback() 
+        try:
+            db_connection.rollback()
+        except:
+            pass
 
 
     await message_obj.reply_text("Searching for the perfect photo... wait for Tae. 😉")
@@ -427,7 +466,10 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         logger.error(f"Media sending failed: {e}")
-        db_connection.rollback()
+        try:
+            db_connection.rollback()
+        except:
+            pass
         await message_obj.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
 
 # ------------------------------------------------------------------
@@ -481,7 +523,10 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error processing media deletion: {e}")
-        db_connection.rollback()
+        try:
+            db_connection.rollback()
+        except:
+            pass
         await message_obj.reply_text("An error occurred during media cleanup.")
 
 # ------------------------------------------------------------------
@@ -555,7 +600,10 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except Exception as e:
         logger.error(f"Cleanup failed: {e}")
-        db_connection.rollback()
+        try:
+            db_connection.rollback()
+        except:
+            pass
         await message_obj.reply_text(f"Cleanup process encountered a critical error: {e}")
 
 # ------------------------------------------------------------------
@@ -687,6 +735,10 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             logger.error(f"Broadcast database error: {e}")
+            try:
+                db_connection.rollback()
+            except:
+                pass
             await message_obj.reply_text(f"Broadcast database error occurred: {e}")
     else:
         await message_obj.reply_text("Database connection failed. Cannot fetch user list.")
@@ -763,6 +815,10 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             logger.error(f"Media Broadcast database error: {e}")
+            try:
+                db_connection.rollback()
+            except:
+                pass
             await update.message.reply_text(f"Media Broadcast database error occurred: {e}")
     else:
         await update.message.reply_text("Database connection failed. Cannot fetch user list.")
