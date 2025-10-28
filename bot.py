@@ -8,8 +8,9 @@ import requests
 from groq import Groq
 from telegram import Update
 from telegram.constants import ChatAction
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler # <-- CallbackQueryHandler ചേർത്തു
 from telegram.error import Forbidden, BadRequest 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup # <-- Inline ബട്ടൺ ക്ലാസുകൾ ചേർത്തു
 from datetime import datetime, timedelta, timezone 
 
 # ലോഗിംഗ് സെറ്റപ്പ്
@@ -171,12 +172,10 @@ async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- ചാനൽ മീഡിയ മെസ്സേജ് ഹാൻഡ്ലർ ---
 # ------------------------------------------------------------------
 async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ചാനൽ ID ശരിയാണെങ്കിൽ മാത്രം collect_media വിളിക്കുന്നു
     try:
-        # ഇവിടെ update.channel_post പരിശോധിക്കുന്നത് ചാനൽ മെസ്സേജുകൾക്ക് മാത്രമായുള്ള ഫിൽറ്റർ ആയതുകൊണ്ടാണ്.
         if update.channel_post and update.channel_post.chat_id == int(ADMIN_CHANNEL_ID):
             await collect_media(update, context) 
-            return # മീഡിയ ശേഖരിച്ച ശേഷം ഇവിടെ നിർത്തുന്നു
+            return 
     except Exception as e:
         logger.error(f"Error in channel_message_handler: {e}")
         return
@@ -220,16 +219,24 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Failed to fetch user count: {e}")
             db_connection.rollback()
     
-    await update.message.reply_text(f"Total users: {count}")
+    # ഇവിടെ update.message.reply_text ഉപയോഗിക്കുന്നതിനു പകരം context.bot.send_message ഉപയോഗിക്കുന്നു
+    # ഇത് button_handler-ൽ നിന്ന് വിളിക്കുമ്പോഴുള്ള പ്രശ്നം ഒഴിവാക്കാൻ
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Total users: {count}")
 
 # ------------------------------------------------------------------
 # --- New ഫംഗ്ഷൻ (/new) ---
 # ------------------------------------------------------------------
 async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Searching for the perfect photo... wait for Tae. 😉")
+    # കമാൻഡ് മെസ്സേജിൽ നിന്നോ ബട്ടൺ ക്ലിക്കിൽ നിന്നോ ഉള്ള മെസ്സേജ് ഒബ്ജക്റ്റ് എടുക്കുന്നു
+    if update.message is None:
+        message_obj = update.callback_query.message
+    else:
+        message_obj = update.message
+        
+    await message_obj.reply_text("Searching for the perfect photo... wait for Tae. 😉")
     
     if not await establish_db_connection():
-        await update.message.reply_text("Database connection failed. Cannot fetch media list.")
+        await message_obj.reply_text("Database connection failed. Cannot fetch media list.")
         return
 
     try:
@@ -249,47 +256,50 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
 
             if media_type == 'photo':
-                sent_msg = await update.message.reply_photo(
+                sent_msg = await message_obj.reply_photo(
                     photo=file_id, 
                     caption=caption_text, 
-                    has_spoiler=True # സ്പോയിലർ മോഡ് ചേർക്കുന്നു
+                    has_spoiler=True
                 )
             elif media_type == 'video':
-                 sent_msg = await update.message.reply_video(
+                 sent_msg = await message_obj.reply_video(
                     video=file_id, 
                     caption=caption_text,
-                    has_spoiler=True # സ്പോയിലർ മോഡ് ചേർക്കുന്നു
+                    has_spoiler=True
                  )
             else:
-                 await update.message.reply_text("Found a media, but the type is unknown.")
+                 await message_obj.reply_text("Found a media, but the type is unknown.")
                  return
 
             # അയച്ച മെസ്സേജ് ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു (24 മണിക്കൂർ ഡിലീറ്റ് ലോജിക്കിന്)
             with db_connection.cursor() as cursor:
                  cursor.execute(
                      "INSERT INTO sent_media (chat_id, message_id) VALUES (%s, %s)",
-                     (update.message.chat_id, sent_msg.message_id)
+                     (message_obj.chat_id, sent_msg.message_id)
                  )
             db_connection.commit()
-            logger.info(f"Sent media saved to be deleted later: Chat ID {update.message.chat_id}")
+            logger.info(f"Sent media saved to be deleted later: Chat ID {message_obj.chat_id}")
 
         else:
-            await update.message.reply_text("I haven't collected any photos yet, baby. Ask the admin to post some! 😔")
+            await message_obj.reply_text("I haven't collected any photos yet, baby. Ask the admin to post some! 😔")
         
     except Exception as e:
         logger.error(f"Media sending failed: {e}")
-        await update.message.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
+        await message_obj.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
 
 # ------------------------------------------------------------------
 # --- മെസ്സേജ് ഡിലീറ്റ് ചെയ്യാനുള്ള ഫംഗ്ഷൻ (/delete_old_media) ---
 # ------------------------------------------------------------------
 async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != ADMIN_TELEGRAM_ID:
-        await update.message.reply_text("This command is for the admin only.")
+    # ഇവിടെ update.message പരിശോധിക്കുന്നതിനു പകരം effective_chat ഉപയോഗിക്കുന്നു
+    if update.effective_user.id != ADMIN_TELEGRAM_ID:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="This command is for the admin only.")
         return
         
+    message_obj = update.effective_message
+    
     if not await establish_db_connection():
-        await update.message.reply_text("Database connection failed. Cannot delete media.")
+        await message_obj.reply_text("Database connection failed. Cannot delete media.")
         return
 
     time_limit = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -305,7 +315,7 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             deleted_count = 0
             
             if not messages_to_delete:
-                await update.message.reply_text("No old media found to delete. Everything is fresh! ✨")
+                await message_obj.reply_text("No old media found to delete. Everything is fresh! ✨")
                 return
 
             for msg_id_db, chat_id, message_id in messages_to_delete:
@@ -322,27 +332,28 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             db_connection.commit()
             
-            await update.message.reply_text(
+            await message_obj.reply_text(
                 f"✅ Successfully deleted {deleted_count} messages older than 24 hours."
             )
 
     except Exception as e:
         logger.error(f"Error processing media deletion: {e}")
-        await update.message.reply_text("An error occurred during media cleanup.")
+        db_connection.rollback()
+        await message_obj.reply_text("An error occurred during media cleanup.")
 
 # ------------------------------------------------------------------
 # --- ഡിലീറ്റ് ചെയ്ത മീഡിയകൾ നീക്കം ചെയ്യാനുള്ള ഫംഗ്ഷൻ (/clearmedia) ---
 # ------------------------------------------------------------------
 async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != ADMIN_TELEGRAM_ID:
-        await update.message.reply_text("This command is for the admin only.")
+    if update.effective_user.id != ADMIN_TELEGRAM_ID:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="This command is for the admin only.")
         return
 
-    await update.message.reply_text("Starting media cleanup... This might take a while. Please wait...")
+    message_obj = update.effective_message
+    await message_obj.reply_text("Starting media cleanup... This might take a while. Please wait...")
 
     if not await establish_db_connection():
-        await update.message.reply_text("Database connection failed. Cannot perform cleanup.")
+        await message_obj.reply_text("Database connection failed. Cannot perform cleanup.")
         return
 
     try:
@@ -353,10 +364,10 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         deleted_count = 0
         total_count = len(all_media)
 
+        # (തുടർന്നുള്ള ലോജിക് മുമ്പുള്ളതുപോലെ)
+
         for message_id, media_type, file_id in all_media:
             try:
-                # അഡ്മിൻ്റെ ചാറ്റിലേക്ക് ഫയൽ അയക്കാൻ ശ്രമിക്കുന്നു. 
-                # ഫയൽ ലഭ്യമല്ലെങ്കിൽ ഇവിടെ BadRequest വരും.
                 if media_type == 'photo':
                     temp_msg = await context.bot.send_photo(
                         chat_id=ADMIN_TELEGRAM_ID, 
@@ -379,7 +390,6 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await context.bot.delete_message(chat_id=ADMIN_TELEGRAM_ID, message_id=temp_msg.message_id) 
                 
             except BadRequest as e:
-                # 'File not found' എറർ വന്നാൽ ഡിലീറ്റ് ചെയ്യണം
                 if "File not found" in str(e) or "file_id is invalid" in str(e):
                     with db_connection.cursor() as cursor_del:
                         cursor_del.execute("DELETE FROM channel_media WHERE message_id = %s", (message_id,))
@@ -394,32 +404,108 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
             
             await asyncio.sleep(0.1) 
 
-        await update.message.reply_text(
+        await message_obj.reply_text(
             f"Media cleanup complete. Checked {total_count} files.\n"
             f"**{deleted_count}** records deleted from database because they were inaccessible (likely deleted from the channel)."
         )
 
     except Exception as e:
         logger.error(f"Cleanup failed: {e}")
-        await update.message.reply_text(f"Cleanup process encountered a critical error: {e}")
+        await message_obj.reply_text(f"Cleanup process encountered a critical error: {e}")
         db_connection.rollback()
+
+# ------------------------------------------------------------------
+# --- ADMIN മെനു ഫംഗ്ഷൻ (/admin) ---
+# ------------------------------------------------------------------
+async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    
+    # അഡ്മിൻ ആണോ എന്ന് പരിശോധിക്കുന്നു
+    if user_id != ADMIN_TELEGRAM_ID:
+        await update.message.reply_text("This command is for the admin only. 😉")
+        return
+
+    # ഇൻലൈൻ കീബോർഡ് ഉണ്ടാക്കുന്നു
+    keyboard = [
+        [InlineKeyboardButton("Total Users 👥", callback_data='admin_users'),
+         InlineKeyboardButton("Send New Photo 📸", callback_data='admin_new_photo')],
+        [InlineKeyboardButton("Broadcast Text 📣", callback_data='admin_broadcast_text')],
+        [InlineKeyboardButton("Clean Deleted Media 🧹", callback_data='admin_clearmedia'),
+         InlineKeyboardButton("Delete Old Messages (24h) 🗑️", callback_data='admin_delete_old')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Welcome back, Admin! What mischief should we get into today?",
+        reply_markup=reply_markup
+    )
+    
+# ------------------------------------------------------------------
+# --- Callback Query Handler (ബട്ടണുകൾ അമർത്തുമ്പോൾ) ---
+# ------------------------------------------------------------------
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    # അഡ്മിൻ ആണോ എന്ന് പരിശോധിക്കുന്നു
+    if user_id != ADMIN_TELEGRAM_ID:
+        await query.answer("This action is restricted to the bot admin.")
+        return
+
+    await query.answer() # ടെലിഗ്രാം ലോഡിംഗ് നിർത്താൻ
+
+    # ബട്ടൺ അമർത്തിയ മെസ്സേജ് എഡിറ്റ് ചെയ്യുന്നു
+    await context.bot.edit_message_text(
+        text=f"Running command: {query.data.replace('admin_', '/').upper()}...",
+        chat_id=query.message.chat_id,
+        message_id=query.message.message_id
+    )
+
+    # കമാൻഡുകൾ വിളിക്കുന്നു
+    if query.data == 'admin_users':
+        await user_count(query, context)
+    elif query.data == 'admin_new_photo':
+        await send_new_photo(query, context)
+    elif query.data == 'admin_clearmedia':
+        await clear_deleted_media(query, context)
+    elif query.data == 'admin_delete_old':
+        await delete_old_media(query, context)
+    elif query.data == 'admin_broadcast_text':
+        # ബ്രോഡ്കാസ്റ്റ് ടെക്സ്റ്റ് ചെയ്യാൻ യൂസറിനോട് മെസ്സേജ് ആവശ്യപ്പെടുന്നു
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="Please type the message you want to broadcast (starts with /broadcast):"
+        )
 
 
 # ------------------------------------------------------------------
 # --- ടെക്സ്റ്റ് ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/broadcast) ---
 # ------------------------------------------------------------------
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    
+    # ഈ ഫംഗ്ഷനും callback_query കൈകാര്യം ചെയ്യണം
+    if update.message is None:
+        message_obj = update.callback_query.message
+        user_id = update.callback_query.from_user.id
+    else:
+        message_obj = update.message
+        user_id = update.message.from_user.id
+
     if user_id != ADMIN_TELEGRAM_ID:
-        await update.message.reply_text("Broadcast command is for the admin only.")
+        await message_obj.reply_text("Broadcast command is for the admin only.")
         return
 
-    if not context.args:
-        await update.message.reply_text("Please provide a message to broadcast. Example: /broadcast Come talk to me! ❤️")
+    # മെസ്സേജ് ടെക്സ്റ്റ് എടുക്കുന്നു
+    if message_obj.text.startswith('/broadcast'):
+        broadcast_text = message_obj.text.replace('/broadcast', '', 1).strip()
+    elif len(context.args) > 0:
+        broadcast_text = " ".join(context.args)
+    else:
+        await message_obj.reply_text("Broadcast message cannot be empty.")
         return
 
-    broadcast_text = " ".join(context.args)
+    if not broadcast_text:
+        await message_obj.reply_text("Broadcast message cannot be empty.")
+        return
     
     if await establish_db_connection():
         try:
@@ -430,7 +516,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sent_count = 0
             blocked_count = 0
             
-            await update.message.reply_text(f"Starting text broadcast to {len(all_users)} users...")
+            await message_obj.reply_text(f"Starting text broadcast to {len(all_users)} users...")
             
             for target_id in all_users:
                 try:
@@ -457,9 +543,9 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             logger.error(f"Broadcast database error: {e}")
-            await update.message.reply_text(f"Broadcast database error occurred: {e}")
+            await message_obj.reply_text(f"Broadcast database error occurred: {e}")
     else:
-        await update.message.reply_text("Database connection failed. Cannot fetch user list.")
+        await message_obj.reply_text("Database connection failed. Cannot fetch user list.")
 
 # ------------------------------------------------------------------
 # --- മീഡിയ ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/bmedia) ---
@@ -538,20 +624,6 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Database connection failed. Cannot fetch user list.")
 
 
-# ------------------------------------------------------------------
-# --- ചാനൽ മെസ്സേജുകൾക്കായുള്ള പ്രത്യേക ഹാൻഡ്ലർ (മീഡിയ ശേഖരണത്തിനായി) ---
-# ------------------------------------------------------------------
-async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ചാനൽ പോസ്റ്റ് ഉണ്ടോ, chat_id ശരിയാണോ എന്ന് പരിശോധിക്കുന്നു
-    try:
-        if update.channel_post and update.channel_post.chat_id == int(ADMIN_CHANNEL_ID):
-            await collect_media(update, context) 
-            return # മീഡിയ ശേഖരിച്ച ശേഷം ഇവിടെ നിർത്തുന്നു
-    except Exception as e:
-        logger.error(f"Error in channel_message_handler: {e}")
-        return
-
-
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
@@ -622,9 +694,11 @@ def main():
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("broadcast", broadcast_message))
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
-    application.add_handler(CommandHandler("new", send_new_photo)) # <-- /new കമാൻഡ്
-    application.add_handler(CommandHandler("delete_old_media", delete_old_media)) # <-- 24h ഡിലീറ്റ് കമാൻഡ്
-    application.add_handler(CommandHandler("clearmedia", clear_deleted_media)) # <-- ഡിലീറ്റ് ചെയ്ത മീഡിയ ഡാറ്റാബേസിൽ നിന്ന് നീക്കം ചെയ്യുന്നു
+    application.add_handler(CommandHandler("new", send_new_photo)) 
+    application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
+    application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
+    application.add_handler(CommandHandler("admin", admin_menu)) # <-- പുതിയ admin കമാൻഡ്
+    application.add_handler(CallbackQueryHandler(button_handler)) # <-- ബട്ടൺ ക്ലിക്കുകൾ കൈകാര്യം ചെയ്യാൻ
     
     # 1. ചാനൽ മീഡിയ കളക്ഷൻ ഹാൻഡ്ലർ (ചാനലിൽ പുതിയ മീഡിയ പോസ്റ്റ് ചെയ്യുമ്പോൾ)
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
