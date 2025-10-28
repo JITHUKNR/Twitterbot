@@ -125,8 +125,8 @@ async def establish_db_connection():
 # --- പുതിയ ഫംഗ്ഷൻ: മീഡിയ ID-കൾ ഡാറ്റാബേസിൽ ശേഖരിക്കുന്നു ---
 # ------------------------------------------------------------------
 async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ഈ ഫംഗ്ഷൻ വിളിക്കുന്നത് ചാനൽ മെസ്സേജുകൾ വന്നാൽ മാത്രമാണ്.
-    message = update.channel_post # ചാനൽ പോസ്റ്റുകൾ channel_post-ൽ നിന്നാണ് എടുക്കേണ്ടത്
+    # ഈ ഫംഗ്ഷൻ വിളിക്കുന്നത് ചാനൽ മെസ്സേജുകൾ വന്നാൽ മാത്രമാണ് (channel_message_handler-ൽ നിന്ന്)
+    message = update.channel_post 
     
     if not message:
         return
@@ -373,20 +373,20 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Database connection failed. Cannot fetch user list.")
 
+
 # ------------------------------------------------------------------
 # --- ചാനൽ മെസ്സേജുകൾക്കായുള്ള പ്രത്യേക ഹാൻഡ്ലർ (മീഡിയ ശേഖരണത്തിനായി) ---
 # ------------------------------------------------------------------
 async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ഈ ഫംഗ്ഷൻ ചാനൽ മെസ്സേജുകൾ വന്നാൽ മാത്രം പ്രവർത്തിക്കും
-    try:
-        # chat_id-യെ string ആക്കി താരതമ്യം ചെയ്യുന്നു
-        if str(update.channel_post.chat_id) == str(ADMIN_CHANNEL_ID):
-            await collect_media(update, context) 
-            return # മീഡിയ ശേഖരിച്ച ശേഷം ഇവിടെ നിർത്തുന്നു
-    except Exception as e:
-        # channel_post-ൽ മെസ്സേജ് ഇല്ലെങ്കിൽ (ഉദാഹരണത്തിന്, text മെസ്സേജ്)
-        logger.error(f"Error processing channel post: {e}")
-        return
+    
+    # ചാനൽ പോസ്റ്റ് ഉണ്ടോ, chat_id ശരിയാണോ എന്ന് പരിശോധിക്കുന്നു
+    if update.channel_post and str(update.channel_post.chat_id) == str(ADMIN_CHANNEL_ID):
+        await collect_media(update, context) 
+        return # മീഡിയ ശേഖരിച്ച ശേഷം ഇവിടെ നിർത്തുന്നു
+    
+    # ചാനലിൽ വരുന്ന മറ്റ് നോൺ-മീഡിയ മെസ്സേജുകൾ അവഗണിക്കുന്നു
+    return
 
 
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
@@ -464,8 +464,8 @@ def main():
     application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
     
     # 1. ചാനൽ മീഡിയ കളക്ഷൻ ഹാൻഡ്ലർ (ചാനലിൽ പുതിയ മീഡിയ പോസ്റ്റ് ചെയ്യുമ്പോൾ)
-    # filters.UpdateType.CHANNEL_POST ഉപയോഗിച്ച് ചാനലിലെ പോസ്റ്റുകൾ മാത്രം എടുക്കുന്നു
-    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, channel_message_handler))
+    # ഇത് ചാനലിൽ വരുന്ന ഫോട്ടോ, വീഡിയോ പോസ്റ്റുകൾ മാത്രമേ channel_message_handler-ലേക്ക് വിടുകയുള്ളൂ.
+    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
 
     # 2. AI ചാറ്റ് ഹാൻഡ്ലർ (പ്രൈവറ്റ് മെസ്സേജ് വന്നാൽ മാത്രം)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
