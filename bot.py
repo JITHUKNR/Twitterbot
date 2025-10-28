@@ -10,7 +10,7 @@ from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden, BadRequest 
-from datetime import datetime, timedelta, timezone # സമയത്തെ കൈകാര്യം ചെയ്യാൻ
+from datetime import datetime, timedelta, timezone 
 
 # ലോഗിംഗ് സെറ്റപ്പ്
 logging.basicConfig(
@@ -27,7 +27,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # --- അഡ്മിൻ ID-കളും ചാനൽ ID-യും ---
 ADMIN_TELEGRAM_ID = 7567364364 
-# Render-ൽ സെറ്റ് ചെയ്ത ID (ഇതൊരു സ്ട്രിംഗ് ആയിരിക്കും, ഉപയോഗിക്കുമ്പോൾ ഇൻ്റിജർ ആക്കണം)
+# Render-ൽ സെറ്റ് ചെയ്ത ID 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 # ------------------------------------------------------------------
 
@@ -238,7 +238,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
             
             # --- ഇവിടെയാണ് സ്പോയിലർ മോഡ് ചേർക്കുന്നത് ---
-            caption_text = f"🚨 DO NOT SAVE/FORWARD: {caption_text}"
+            # സുരക്ഷാ മുന്നറിയിപ്പ് ഇല്ലാതെ, റൊമാൻ്റിക് ക്യാപ്ഷൻ മാത്രം ഉപയോഗിക്കുന്നു
             
             if media_type == 'photo':
                 sent_msg = await update.message.reply_photo(
@@ -445,7 +445,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except BadRequest:
                     blocked_count += 1
                 except Exception as e:
-                    logger.warning(f"Failed to send media to user {target_id}: {e}")
+                    logger.warning(f"Failed to send message to user {target_id}: {e}")
                     blocked_count += 1
             
             await context.bot.send_message(
