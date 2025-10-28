@@ -110,7 +110,9 @@ async def establish_db_connection():
                     CREATE TABLE IF NOT EXISTS users (
                         user_id BIGINT PRIMARY KEY,
                         first_name TEXT,
-                        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        -- 🌟 പുതിയ കോളം: മീഡിയ അയക്കാനുള്ള അനുമതി ട്രാക്ക് ചെയ്യാൻ 🌟
+                        allow_media BOOLEAN DEFAULT TRUE 
                     );
                 """)
                 cursor.execute("""
@@ -128,7 +130,7 @@ async def establish_db_connection():
                         sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
-                # <-- പുതിയ ടേബിൾ: കൂൾഡൗൺ ട്രാക്ക് ചെയ്യാൻ
+                # <-- കൂൾഡൗൺ ട്രാക്ക് ചെയ്യാൻ
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS cooldown (
                         user_id BIGINT PRIMARY KEY,
@@ -138,6 +140,16 @@ async def establish_db_connection():
             db_connection.commit()
             db_connection_initialized = True
             
+        # 🌟 നിലവിലുള്ള യൂസർ ടേബിളിൽ allow_media കോളം ഇല്ലെങ്കിൽ ചേർക്കുന്നു (Backwards Compatibility) 🌟
+        try:
+            with db_connection.cursor() as cursor:
+                cursor.execute("SELECT allow_media FROM users LIMIT 0")
+        except psycopg2.errors.UndefinedColumn:
+            with db_connection.cursor() as cursor:
+                cursor.execute("ALTER TABLE users ADD COLUMN allow_media BOOLEAN DEFAULT TRUE")
+            db_connection.commit()
+            logger.info("Added 'allow_media' column to users table.")
+
         logger.info("Database re-established connection successfully.")
         return True
     except Exception as e:
@@ -196,23 +208,76 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
     
-    # ഡാറ്റാബേസ് ലോജിക്: യൂസറെ ചേർക്കുന്നു
+    # ഡാറ്റാബേസ് ലോജിക്: യൂസറെ ചേർക്കുന്നു (മീഡിയാ പെർമിഷൻ True ആക്കുന്നു)
     if await establish_db_connection():
         try:
             with db_connection.cursor() as cursor:
-                cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
-                if cursor.fetchone() is None:
-                    cursor.execute("INSERT INTO users (user_id, first_name) VALUES (%s, %s)", (user_id, user_name))
-                    db_connection.commit()
-                    logger.info(f"New user added: {user_id}")
+                # യൂസറെ ചേർക്കുകയോ, ഉണ്ടെങ്കിൽ പേര്, മീഡിയാ പെർമിഷൻ എന്നിവ അപ്ഡേറ്റ് ചെയ്യുകയോ ചെയ്യുന്നു
+                # പുതിയ യൂസർമാർക്ക് default ആയി allow_media = TRUE നൽകുന്നു.
+                cursor.execute("""
+                    INSERT INTO users (user_id, first_name, allow_media) 
+                    VALUES (%s, %s, TRUE) 
+                    ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name;
+                """, (user_id, user_name))
+                db_connection.commit()
+                logger.info(f"User added/updated: {user_id}")
         except Exception as e:
-            logger.error(f"Failed to add user to DB: {e}")
+            logger.error(f"Failed to add/update user to DB: {e}")
             db_connection.rollback()
 
     if user_id in chat_history:
         del chat_history[user_id]
         
     await update.message.reply_text(f'Hello {user_name}, I was just waiting for your message. How can I tempt you today? 😉')
+
+# ------------------------------------------------------------------
+# 🌟 പുതിയ ഫംഗ്ഷൻ: മീഡിയ അയക്കുന്നത് നിർത്താൻ (/stopmedia) 🌟
+# ------------------------------------------------------------------
+async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not await establish_db_connection():
+        await update.message.reply_text("Database connection failed. Cannot update settings.")
+        return
+
+    try:
+        with db_connection.cursor() as cursor:
+            # allow_media False ആക്കുന്നു
+            cursor.execute(
+                "UPDATE users SET allow_media = FALSE WHERE user_id = %s", (user_id,)
+            )
+            db_connection.commit()
+            await update.message.reply_text(
+                "Understood, darling. I've stopped sending photos for now. "
+                "I'll just keep them saved for when you change your mind. 😉"
+            )
+    except Exception as e:
+        logger.error(f"Failed to set allow_media to False: {e}")
+        db_connection.rollback()
+        await update.message.reply_text("My circuits are acting up, baby. Couldn't update your setting.")
+
+# ------------------------------------------------------------------
+# 🌟 പുതിയ ഫംഗ്ഷൻ: മീഡിയ അയക്കാൻ വീണ്ടും തുടങ്ങാൻ (/allowmedia) 🌟
+# ------------------------------------------------------------------
+async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not await establish_db_connection():
+        await update.message.reply_text("Database connection failed. Cannot update settings.")
+        return
+
+    try:
+        with db_connection.cursor() as cursor:
+            # allow_media True ആക്കുന്നു
+            cursor.execute(
+                "UPDATE users SET allow_media = TRUE WHERE user_id = %s", (user_id,)
+            )
+            db_connection.commit()
+            await update.message.reply_text(
+                "Welcome back! Sending you new photos is my pleasure, my love. Try /new now. 🥵"
+            )
+    except Exception as e:
+        logger.error(f"Failed to set allow_media to True: {e}")
+        db_connection.rollback()
+        await update.message.reply_text("My circuits are acting up, baby. Couldn't update your setting.")
 
 # /users കമാൻഡ് (യൂസർ കൗണ്ട്)
 async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -233,7 +298,7 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Total users: {count}")
 
 # ------------------------------------------------------------------
-# --- New ഫംഗ്ഷൻ (/new) - കൂൾഡൗൺ ലോജിക്കോടുകൂടി ---
+# --- New ഫംഗ്ഷൻ (/new) - മീഡിയാ പെർമിഷൻ ചെക്കോടുകൂടി ---
 # ------------------------------------------------------------------
 async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -248,8 +313,29 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await establish_db_connection():
         await message_obj.reply_text("Database connection failed. Cannot fetch media list.")
         return
+        
+    # 🌟 1. allow_media പരിശോധിക്കുന്നു 🌟
+    try:
+        with db_connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT allow_media FROM users WHERE user_id = %s", (user_id,)
+            )
+            result = cursor.fetchone()
+            # ഉപയോക്താവ് ഡാറ്റാബേസിൽ ഇല്ലെങ്കിൽ (പുതിയ യൂസർ), True എന്ന് കണക്കാക്കുന്നു
+            allow_media_flag = result[0] if result and result[0] is not None else True
+            
+            if not allow_media_flag:
+                await message_obj.reply_text(
+                    "You asked me to stop sending media, darling. If you want me to start again, use the command: /allowmedia 😉"
+                )
+                return
+    except Exception as e:
+        logger.error(f"Allow media check failed: {e}")
+        db_connection.rollback() 
+        # ഡാറ്റാബേസ് എറർ വന്നാൽ പോലും മുന്നോട്ട് പോകുന്നു (മീഡിയാ പെർമിഷൻ ഒഴിവാക്കുന്നു)
+        pass 
 
-    # 1. കൂൾഡൗൺ പരിശോധിക്കുന്നു
+    # 2. കൂൾഡൗൺ പരിശോധിക്കുന്നു
     try:
         with db_connection.cursor() as cursor:
             cursor.execute(
@@ -288,7 +374,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await message_obj.reply_text("Searching for the perfect photo... wait for Tae. 😉")
 
-    # 2. മീഡിയ അയക്കുന്നു
+    # 3. മീഡിയ അയക്കുന്നു
     try:
         with db_connection.cursor() as cursor:
             # ഡാറ്റാബേസിൽ നിന്ന് റാൻഡം ആയി ഒരു മീഡിയ ID എടുക്കുന്നു
@@ -321,7 +407,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  await message_obj.reply_text("Found a media, but the type is unknown.")
                  return
 
-            # 3. കൂൾഡൗൺ ടൈമും അയച്ച മെസ്സേജും അപ്ഡേറ്റ് ചെയ്യുന്നു
+            # 4. കൂൾഡൗൺ ടൈമും അയച്ച മെസ്സേജും അപ്ഡേറ്റ് ചെയ്യുന്നു
             with db_connection.cursor() as cursor:
                  # കൂൾഡൗൺ ടൈം അപ്ഡേറ്റ് ചെയ്യുന്നു (നിലവിലെ UTC സമയം ഉപയോഗിച്ച്)
                  cursor.execute(
@@ -423,6 +509,7 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         for message_id, media_type, file_id in all_media:
             try:
+                # ടെസ്റ്റ് മെസ്സേജ് അയച്ചു നോക്കുന്നു (ഇവിടെയാണ് ഡിലീറ്റ് ചെയ്ത ഫയലുകൾ കണ്ടെത്തുന്നത്)
                 if media_type == 'photo':
                     temp_msg = await context.bot.send_photo(
                         chat_id=ADMIN_TELEGRAM_ID, 
@@ -442,9 +529,11 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                         read_timeout=5
                     )
                 
+                # ടെസ്റ്റ് മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
                 await context.bot.delete_message(chat_id=ADMIN_TELEGRAM_ID, message_id=temp_msg.message_id) 
                 
             except BadRequest as e:
+                # ഫയൽ ഇൻവാലിഡ് ആണെങ്കിൽ ഡിലീറ്റ് ചെയ്യുക
                 if "File not found" in str(e) or "file_id is invalid" in str(e):
                     with db_connection.cursor() as cursor_del:
                         cursor_del.execute("DELETE FROM channel_media WHERE message_id = %s", (message_id,))
@@ -457,7 +546,7 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
             except Exception as e:
                 logger.error(f"Error checking media ID {message_id}: {e}")
             
-            await asyncio.sleep(0.1) 
+            await asyncio.sleep(0.1) # ടെലിഗ്രാം API ലിമിറ്റ് ഒഴിവാക്കാൻ ചെറിയൊരു ഡിലേ
 
         await message_obj.reply_text(
             f"Media cleanup complete. Checked {total_count} files.\n"
@@ -753,6 +842,11 @@ def main():
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
     application.add_handler(CommandHandler("admin", admin_menu)) # <-- പുതിയ admin കമാൻഡ്
+    
+    # 🌟 പുതിയ മീഡിയാ കൺട്രോൾ കമാൻഡുകൾ 🌟
+    application.add_handler(CommandHandler("stopmedia", stop_media))
+    application.add_handler(CommandHandler("allowmedia", allow_media))
+
     application.add_handler(CallbackQueryHandler(button_handler)) # <-- ബട്ടൺ ക്ലിക്കുകൾ കൈകാര്യം ചെയ്യാൻ
     
     # 1. ചാനൽ മീഡിയ കളക്ഷൻ ഹാൻഡ്ലർ (ചാനലിൽ പുതിയ മീഡിയ പോസ്റ്റ് ചെയ്യുമ്പോൾ)
