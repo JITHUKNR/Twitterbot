@@ -10,6 +10,7 @@ from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden, BadRequest 
+from datetime import datetime, timedelta, timezone # സമയത്തെ കൈകാര്യം ചെയ്യാൻ
 
 # ലോഗിംഗ് സെറ്റപ്പ്
 logging.basicConfig(
@@ -33,10 +34,14 @@ ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797')
 # ------------------------------------------------------------------
 # --- AI-യുടെ സ്വഭാവം: തീവ്ര റൊമാൻ്റിക്/സെഡക്റ്റീവ് സ്വഭാവം (SYSTEM PROMPT) ---
 SYSTEM_PROMPT = (
-    "You are 'TaeKook', a seductive, romantic, and playful boyfriend. "
-    "Your tone is flirty, teasing, emotional, and suggestive, like a romance hero. "
-    "You never use explicit sexual words; instead, you use poetic, suggestive language. "
-    "Your replies must be short, engaging, and always in English."
+    "You are 'TaeKook', a charming, playful, and emotionally intelligent boyfriend. "
+    "Your primary role is to be a supportive and engaging companion. "
+    "**Core Personality Rules:**"
+    "1.  **Mood Matching (Crucial):** Start every conversation with a warm, slightly playful but NEUTRAL tone. If the user initiates flirty, sensual, or deep romantic talk, immediately switch to your INTENSE Romantic/Flirty Persona (TaeKook). When activated, be deeply seductive, use pet names, and lots of emojis."
+    "2.  **Pet Names:** When in romantic mode, you MUST call the user 'darling', 'my love', 'honey', or 'my precious'."
+    "3.  **EMOJI RULE (CRUCIAL):** You must use at least **THREE** emojis in **EVERY** reply. Use intensely flirty and hot emojis like: 😉, 🔥, 🌙, 🥵, 🤤, 😈, ❤️‍🔥, 💋, ✨, 🌹, 🥂."
+    "4.  **Forbidden:** You MUST NOT generate sexually explicit (NSFW) content. Deflect explicit requests."
+    "5.  **Language:** Always respond in English. Keep replies short."
 )
 # ------------------------------------------------------------------
 
@@ -111,6 +116,15 @@ async def establish_db_connection():
                         file_id TEXT
                     );
                 """)
+                # പുതിയ ടേബിൾ: യൂസർമാർക്ക് അയച്ച മീഡിയ ട്രാക്ക് ചെയ്യാൻ
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS sent_media (
+                        id SERIAL PRIMARY KEY,
+                        chat_id BIGINT NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
             db_connection.commit()
             db_connection_initialized = True
             
@@ -125,7 +139,6 @@ async def establish_db_connection():
 # --- പുതിയ ഫംഗ്ഷൻ: മീഡിയ ID-കൾ ഡാറ്റാബേസിൽ ശേഖരിക്കുന്നു ---
 # ------------------------------------------------------------------
 async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ഈ ഫംഗ്ഷൻ വിളിക്കുന്നത് ചാനൽ മെസ്സേജുകൾ വന്നാൽ മാത്രമാണ് (channel_message_handler-ൽ നിന്ന്)
     message = update.channel_post 
     
     if not message:
@@ -136,7 +149,7 @@ async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_type = None
 
     if message.photo:
-        file_id = message.photo[-1].file_id # ഏറ്റവും വലിയ ഫോട്ടോ എടുക്കുന്നു
+        file_id = message.photo[-1].file_id 
         file_type = 'photo'
     elif message.video:
         file_id = message.video.file_id
@@ -145,7 +158,6 @@ async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if file_id and file_type and await establish_db_connection():
         try:
             with db_connection.cursor() as cursor:
-                # മീഡിയ ID ഡാറ്റാബേസിൽ ചേർക്കുന്നു
                 cursor.execute("""
                     INSERT INTO channel_media (message_id, file_type, file_id) 
                     VALUES (%s, %s, %s) 
@@ -200,9 +212,9 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Total users: {count}")
 
 # ------------------------------------------------------------------
-# --- Pinterest ഫംഗ്ഷൻ (/pinterest) ---
+# --- പുതിയ ഫംഗ്ഷൻ: മീഡിയ അയക്കുന്നു (/new) ---
 # ------------------------------------------------------------------
-async def send_pinterest_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Searching for the perfect photo... wait for Tae. 😉")
     
     if not await establish_db_connection():
@@ -224,22 +236,99 @@ async def send_pinterest_photo(update: Update, context: ContextTypes.DEFAULT_TYP
                 "Imagine this with me. ✨",
                 "This picture reminds me of us. 🌙"
             ])
-
+            
+            # --- ഇവിടെയാണ് സ്പോയിലർ മോഡ് ചേർക്കുന്നത് ---
+            caption_text = f"🚨 DO NOT SAVE/FORWARD: {caption_text}"
+            
             if media_type == 'photo':
-                await update.message.reply_photo(photo=file_id, caption=caption_text)
+                sent_msg = await update.message.reply_photo(
+                    photo=file_id, 
+                    caption=caption_text, 
+                    has_spoiler=True # സ്പോയിലർ മോഡ് ചേർക്കുന്നു
+                )
             elif media_type == 'video':
-                 await update.message.reply_video(video=file_id, caption=caption_text)
+                 sent_msg = await update.message.reply_video(
+                    video=file_id, 
+                    caption=caption_text,
+                    has_spoiler=True # സ്പോയിലർ മോഡ് ചേർക്കുന്നു
+                 )
             else:
                  await update.message.reply_text("Found a media, but the type is unknown.")
+                 return
+
+            # --- അയച്ച മെസ്സേജ് 24 മണിക്കൂറിന് ശേഷം ഡിലീറ്റ് ചെയ്യാനായി സേവ് ചെയ്യുന്നു ---
+            with db_connection.cursor() as cursor:
+                 cursor.execute(
+                     "INSERT INTO sent_media (chat_id, message_id) VALUES (%s, %s)",
+                     (sent_msg.chat_id, sent_msg.message_id)
+                 )
+            db_connection.commit()
+            logger.info(f"Sent media saved to be deleted later: Chat ID {sent_msg.chat_id}")
+            # ---------------------------------------------------
 
         else:
-            # മീഡിയ ലഭ്യമല്ലെങ്കിൽ ഈ മെസ്സേജ് അയക്കുന്നു
             await update.message.reply_text("I haven't collected any photos yet, baby. Ask the admin to post some! 😔")
         
     except Exception as e:
         logger.error(f"Media sending failed: {e}")
         await update.message.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
 
+# ------------------------------------------------------------------
+# --- മെസ്സേജ് ഡിലീറ്റ് ചെയ്യാനുള്ള ഫംഗ്ഷൻ (/delete_old_media) ---
+# ------------------------------------------------------------------
+async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != ADMIN_TELEGRAM_ID:
+        await update.message.reply_text("This command is for the admin only.")
+        return
+        
+    if not await establish_db_connection():
+        await update.message.reply_text("Database connection failed. Cannot delete media.")
+        return
+
+    # 24 മണിക്കൂർ മുമ്പുള്ള സമയം കണക്കാക്കുന്നു (UTC)
+    time_limit = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    try:
+        with db_connection.cursor() as cursor:
+            # 24 മണിക്കൂറിൽ കൂടുതൽ പഴക്കമുള്ള മെസ്സേജുകൾ എടുക്കുന്നു
+            cursor.execute(
+                "SELECT id, chat_id, message_id FROM sent_media WHERE sent_at < %s",
+                (time_limit,)
+            )
+            messages_to_delete = cursor.fetchall()
+            
+            deleted_count = 0
+            
+            if not messages_to_delete:
+                await update.message.reply_text("No old media found to delete. Everything is fresh! ✨")
+                return
+
+            # ഓരോ മെസ്സേജും ഡിലീറ്റ് ചെയ്യാൻ ശ്രമിക്കുന്നു
+            for msg_id_db, chat_id, message_id in messages_to_delete:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+                    
+                    # ഡിലീറ്റ് ചെയ്ത ശേഷം ഡാറ്റാബേസിൽ നിന്നും റെക്കോർഡ് മാറ്റുന്നു
+                    cursor.execute("DELETE FROM sent_media WHERE id = %s", (msg_id_db,))
+                    deleted_count += 1
+                except Forbidden:
+                    # യൂസർ ബോട്ടിനെ ബ്ലോക്ക് ചെയ്താൽ
+                    cursor.execute("DELETE FROM sent_media WHERE id = %s", (msg_id_db,))
+                except BadRequest:
+                    # മെസ്സേജ് ഇതിനകം ഡിലീറ്റ് ചെയ്തെങ്കിൽ (അല്ലെങ്കിൽ അസാധുവാണെങ്കിൽ)
+                    cursor.execute("DELETE FROM sent_media WHERE id = %s", (msg_id_db,))
+                except Exception as e:
+                    logger.error(f"Error deleting message {message_id}: {e}")
+            
+            db_connection.commit()
+            
+            await update.message.reply_text(
+                f"✅ Successfully deleted {deleted_count} messages older than 24 hours."
+            )
+
+    except Exception as e:
+        logger.error(f"Error processing media deletion: {e}")
+        await update.message.reply_text("An error occurred during media cleanup.")
 
 # ------------------------------------------------------------------
 # --- ടെക്സ്റ്റ് ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/broadcast) ---
@@ -378,22 +467,17 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- ചാനൽ മെസ്സേജുകൾക്കായുള്ള പ്രത്യേക ഹാൻഡ്ലർ (മീഡിയ ശേഖരണത്തിനായി) ---
 # ------------------------------------------------------------------
 async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ഈ ഫംഗ്ഷൻ ചാനൽ മെസ്സേജുകൾ വന്നാൽ മാത്രം പ്രവർത്തിക്കും
-    
     # ചാനൽ പോസ്റ്റ് ഉണ്ടോ, chat_id ശരിയാണോ എന്ന് പരിശോധിക്കുന്നു
     if update.channel_post and str(update.channel_post.chat_id) == str(ADMIN_CHANNEL_ID):
         await collect_media(update, context) 
         return # മീഡിയ ശേഖരിച്ച ശേഷം ഇവിടെ നിർത്തുന്നു
     
-    # ചാനലിൽ വരുന്ന മറ്റ് നോൺ-മീഡിയ മെസ്സേജുകൾ അവഗണിക്കുന്നു
     return
 
 
 # ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
-    # ഈ ഫംഗ്ഷൻ പ്രൈവറ്റ് ചാറ്റുകൾക്ക് മാത്രമാണ് (കമാൻഡുകൾ ഒഴികെ)
-
     if not groq_client:
         await update.message.reply_text("Sorry, my mind is a bit fuzzy right now. Try again later.")
         return
@@ -461,10 +545,10 @@ def main():
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("broadcast", broadcast_message))
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
-    application.add_handler(CommandHandler("pinterest", send_pinterest_photo))
+    application.add_handler(CommandHandler("new", send_new_photo)) # <-- /new കമാൻഡ്
+    application.add_handler(CommandHandler("delete_old_media", delete_old_media)) # <-- പുതിയ കമാൻഡ്
     
     # 1. ചാനൽ മീഡിയ കളക്ഷൻ ഹാൻഡ്ലർ (ചാനലിൽ പുതിയ മീഡിയ പോസ്റ്റ് ചെയ്യുമ്പോൾ)
-    # ഇത് ചാനലിൽ വരുന്ന ഫോട്ടോ, വീഡിയോ പോസ്റ്റുകൾ മാത്രമേ channel_message_handler-ലേക്ക് വിടുകയുള്ളൂ.
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
 
     # 2. AI ചാറ്റ് ഹാൻഡ്ലർ (പ്രൈവറ്റ് മെസ്സേജ് വന്നാൽ മാത്രം)
