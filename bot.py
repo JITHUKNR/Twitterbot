@@ -1,4 +1,4 @@
-import os
+Import os
 import logging
 # from pymongo import MongoClient
 import asyncio
@@ -375,13 +375,17 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sent_msg = await message_obj.reply_photo(
                     photo=file_id, 
                     caption=caption_text, 
-                    has_spoiler=True
+                    has_spoiler=True,
+                    # 🔒 ഇവിടെയാണ് protect_content ചേർത്തിരിക്കുന്നത് 🔒
+                    protect_content=True
                 )
             elif media_type == 'video':
                  sent_msg = await message_obj.reply_video(
                     video=file_id, 
                     caption=caption_text,
-                    has_spoiler=True
+                    has_spoiler=True,
+                    # 🔒 ഇവിടെയാണ് protect_content ചേർത്തിരിക്കുന്നത് 🔒
+                    protect_content=True
                  )
             else:
                  await message_obj.reply_text("Found a media, but the type is unknown.")
@@ -707,9 +711,21 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for target_id in all_users:
                 try:
                     if media_type == 'photo':
-                        await context.bot.send_photo(chat_id=target_id, photo=file_id, caption=caption)
+                        await context.bot.send_photo(
+                            chat_id=target_id, 
+                            photo=file_id, 
+                            caption=caption,
+                            # 🔒 ഇവിടെയാണ് protect_content ചേർത്തിരിക്കുന്നത് 🔒
+                            protect_content=True 
+                        )
                     else: # video
-                        await context.bot.send_video(chat_id=target_id, video=file_id, caption=caption)
+                        await context.bot.send_video(
+                            chat_id=target_id, 
+                            video=file_id, 
+                            caption=caption,
+                            # 🔒 ഇവിടെയാണ് protect_content ചേർത്തിരിക്കുന്നത് 🔒
+                            protect_content=True
+                        )
                         
                     sent_count += 1
                     await asyncio.sleep(0.05) 
