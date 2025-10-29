@@ -12,7 +12,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.error import Forbidden, BadRequest 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup 
 from datetime import datetime, timedelta, timezone 
-from psycopg2 import errors as pg_errors 
+from psycopg2 import errors as pg_errors # PostgreSQL പിഴവുകൾ കൈകാര്യം ചെയ്യാൻ
 
 # -------------------- കൂൾഡൗൺ സമയം --------------------
 COOLDOWN_TIME_SECONDS = 180 # 3 മിനിറ്റ് = 180 സെക്കൻഡ്
@@ -925,9 +925,8 @@ def main():
         listen="0.0.0.0",
         port=PORT,
         url_path=TOKEN, 
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
-        # ടെലിഗ്രാം സെർവർ കൂടുതൽ സമയം കാത്തിരിക്കാൻ read_timeout വർദ്ധിപ്പിച്ചു
-        read_timeout=35
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+        # read_timeout പരാമീറ്റർ പഴയ library വേർഷനിൽ ആവശ്യമില്ലാത്തതിനാൽ ഒഴിവാക്കി
     )
 
 if __name__ == '__main__':
