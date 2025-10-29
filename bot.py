@@ -290,37 +290,4 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- New ഫംഗ്ഷൻ (/new) - മീഡിയാ പെർമിഷൻ ചെക്കോടുകൂടി ---
 # ------------------------------------------------------------------
 async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ഇവിടെ update.message പരിശോധിക്കുന്നതിനു പകരം effective_user ഉപയോഗിക്കുന്നു
-    user_id = update.effective_user.id 
-    current_time = datetime.now(timezone.utc) # UTC സമയം ഉപയോഗിക്കുന്നു
-    
-    # കമാൻഡ് മെസ്സേജിൽ നിന്നോ ബട്ടൺ ക്ലിക്കിൽ നിന്നോ ഉള്ള മെസ്സേജ് ഒബ്ജക്റ്റ് എടുക്കുന്നു
-    if update.message is None:
-        message_obj = update.callback_query.message
-    else:
-        message_obj = update.message
-        
-    if not establish_db_connection():
-        await message_obj.reply_text("Database connection failed. Cannot fetch media list.")
-        return
-        
-    # 🌟 1. allow_media പരിശോധിക്കുന്നു 🌟
-    allow_media_flag = True
-    try:
-        # MongoDB: allow_media flag എടുക്കുന്നു
-        user_doc = db_collection_users.find_one({'user_id': user_id})
-        
-        if user_doc and 'allow_media' in user_doc and user_doc['allow_media'] is False:
-            allow_media_flag = False
-            
-            await message_obj.reply_text(
-                "You asked me to stop sending media, darling. If you want me to start again, use the command: /allowmedia 😉"
-            )
-            return
-    except Exception as e:
-        logger.error(f"Allow media check failed: {e}")
-        pass 
-
-    # 2. കൂൾഡൗൺ പരിശോധിക്കുന്നു
-    try:
-        cooldown_doc = db_collection_cooldown.find_one({'user
+    # ഇവിടെ update.message പരിശോധിക്കുന്നതിനു പക
