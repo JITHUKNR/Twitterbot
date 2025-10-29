@@ -12,31 +12,32 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.error import Forbidden, BadRequest 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup 
 from datetime import datetime, timedelta, timezone 
+from psycopg2 import errors as pg_errors # PostgreSQL പിഴവുകൾ കൈകാര്യം ചെയ്യാൻ
 
-# -------------------- Cooldown Time --------------------
-COOLDOWN_TIME_SECONDS = 180 # 3 minutes = 180 seconds
+# -------------------- കൂൾഡൗൺ സമയം --------------------
+COOLDOWN_TIME_SECONDS = 180 # 3 മിനിറ്റ് = 180 സെക്കൻഡ്
 # --------------------------------------------------------
 
-# Logging Setup
+# ലോഗിംഗ് സെറ്റപ്പ്
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# --- Load Environment Variables ---
+# --- Environment Variables-ഉം ലോഡ് ചെയ്യുന്നു ---
 TOKEN = os.environ.get('TOKEN') 
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# --- Admin IDs and Channel ID ---
+# --- അഡ്മിൻ ID-കളും ചാനൽ ID-യും ---
 ADMIN_TELEGRAM_ID = 7567364364 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
-# --- AI Personality: Intense Romantic/Seductive Persona (SYSTEM PROMPT) ---
+# --- AI-യുടെ സ്വഭാവം: തീവ്ര റൊമാൻ്റിക്/സെഡക്റ്റീവ് സ്വഭാവം (SYSTEM PROMPT) ---
 SYSTEM_PROMPT = (
     "You are 'TaeKook', a charming, playful, and emotionally intelligent boyfriend. "
     "Your primary role is to be a supportive and engaging companion. "
@@ -49,12 +50,12 @@ SYSTEM_PROMPT = (
 )
 # ------------------------------------------------------------------
 
-# --- Database Setup Variables ---
+# --- ഡാറ്റാബേസ് സെറ്റപ്പ് വേരിയബിളുകൾ ---
 db_connection = None
 db_connection_initialized = False
 # ------------------------------------
 
-# --- Groq AI Client Setup ---
+# --- Groq AI ക്ലയന്റ് സെറ്റപ്പ് ---
 groq_client = None
 try:
     if not GROQ_API_KEY:
@@ -80,37 +81,36 @@ def add_emojis_based_on_mood(text):
         return text + " 😉💞"
 
 # ------------------------------------------------------------------
-# --- Function to re-establish Database Connection (with Rollback Logic) ---
+# --- ഡാറ്റാബേസ് കണക്ഷൻ വീണ്ടും സ്ഥാപിക്കാൻ ശ്രമിക്കുന്ന ഫംഗ്ഷൻ ---
 # ------------------------------------------------------------------
 async def establish_db_connection():
     global db_connection, db_connection_initialized
     
-    # 1. Check if the current connection is valid
+    # 1. നിലവിലെ കണക്ഷൻ സാധുവാണോ എന്ന് പരിശോധിക്കുന്നു
     if db_connection is not None:
         try:
             with db_connection.cursor() as cursor:
-                # Simple query to check if the connection is alive
+                # ഒരു ലളിതമായ query നടത്തി കണക്ഷൻ ജീവനോടെയുണ്ടോ എന്ന് നോക്കുന്നു
                 cursor.execute("SELECT 1")
             return True
         except Exception as e:
             logger.warning(f"Existing DB connection failed health check or query failed: {e}. Attempting reconnection.")
             
-            # Connection failed: Try to rollback and close to clear the 'aborted transaction' state
+            # പരാജയപ്പെട്ട ട്രാൻസാക്ഷൻ rollback ചെയ്യാൻ ശ്രമിക്കുന്നു (Aborted issue പരിഹരിക്കാൻ)
             try:
-                if not db_connection.closed:
+                if db_connection and not db_connection.closed:
                     db_connection.rollback()
-                    db_connection.close() 
-            except Exception as rb_e:
-                logger.debug(f"Failed to rollback/close connection: {rb_e}")
-                
-            db_connection = None 
+                    db_connection.close()
+            except:
+                pass
+            db_connection = None # കണക്ഷൻ നഷ്ടപ്പെട്ടാൽ None ആക്കുന്നു
 
-    # 2. Check if DATABASE_URL is set
+    # 2. DATABASE_URL ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു
     if not DATABASE_URL:
-        logger.error("DATABASE_URL is not set. Cannot connect to database.")
+        logger.error("DATABASE_URL is not set.")
         return False
         
-    # 3. Attempt to establish a new connection
+    # 3. പുതിയ കണക്ഷൻ സ്ഥാപിക്കാൻ ശ്രമിക്കുന്നു
     try:
         up.uses_netloc.append("postgres")
         db_url = up.urlparse(DATABASE_URL)
@@ -120,13 +120,13 @@ async def establish_db_connection():
             password=db_url.password,
             host=db_url.hostname,
             port=db_url.port,
-            connect_timeout=15 # Increased timeout for network issues
+            # നെറ്റ്വർക്ക് ടൈംഔട്ട് പ്രശ്നം പരിഹരിക്കാൻ ടൈംഔട്ട് 30 സെക്കൻഡായി വർദ്ധിപ്പിച്ചു
+            connect_timeout=30 
         )
         
-        # 4. Create Tables (only on first run)
+        # 4. ടേബിളുകൾ ഉണ്ടാക്കുന്നു (ആദ്യം മാത്രം)
         if not db_connection_initialized:
             with db_connection.cursor() as cursor:
-                # User table (Added allow_media column)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         user_id BIGINT PRIMARY KEY,
@@ -135,7 +135,6 @@ async def establish_db_connection():
                         allow_media BOOLEAN DEFAULT TRUE 
                     );
                 """)
-                # Media table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS channel_media (
                         message_id BIGINT PRIMARY KEY,
@@ -143,7 +142,6 @@ async def establish_db_connection():
                         file_id TEXT
                     );
                 """)
-                # Sent Media table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS sent_media (
                         id SERIAL PRIMARY KEY,
@@ -152,7 +150,6 @@ async def establish_db_connection():
                         sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
-                # Cooldown table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS cooldown (
                         user_id BIGINT PRIMARY KEY,
@@ -162,11 +159,11 @@ async def establish_db_connection():
             db_connection.commit()
             db_connection_initialized = True
             
-        # Add allow_media column if it doesn't exist (for older users)
+        # allow_media കോളം ഇല്ലെങ്കിൽ ചേർക്കുന്നു
         try:
             with db_connection.cursor() as cursor:
                 cursor.execute("SELECT allow_media FROM users LIMIT 0")
-        except psycopg2.errors.UndefinedColumn:
+        except pg_errors.UndefinedColumn:
             with db_connection.cursor() as cursor:
                 cursor.execute("ALTER TABLE users ADD COLUMN allow_media BOOLEAN DEFAULT TRUE")
             db_connection.commit()
@@ -177,11 +174,11 @@ async def establish_db_connection():
     
     except Exception as e:
         logger.error(f"Failed to establish DB connection: {e}")
-        db_connection = None 
+        db_connection = None # കണക്ഷൻ പരാജയപ്പെട്ടാൽ അത് None ആക്കുന്നു
         return False
 
 # ------------------------------------------------------------------
-# --- Function to collect Media IDs into the database ---
+# --- പുതിയ ഫംഗ്ഷൻ: മീഡിയ ID-കൾ ഡാറ്റാബേസിൽ ശേഖരിക്കുന്നു ---
 # ------------------------------------------------------------------
 async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.channel_post 
@@ -219,7 +216,7 @@ async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ------------------------------------------------------------------
-# --- Channel Media Message Handler ---
+# --- ചാനൽ മീഡിയ മെസ്സേജ് ഹാൻഡ്ലർ ---
 # ------------------------------------------------------------------
 async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -230,15 +227,16 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
         logger.error(f"Error in channel_message_handler: {e}")
         return
 
-# /start command
+# /start കമാൻഡ്
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
     
-    # Database logic: Add/update user (setting media permission to True by default)
+    # ഡാറ്റാബേസ് ലോജിക്: യൂസറെ ചേർക്കുന്നു (മീഡിയാ പെർമിഷൻ True ആക്കുന്നു)
     if await establish_db_connection():
         try:
             with db_connection.cursor() as cursor:
+                # യൂസറെ ചേർക്കുകയോ, ഉണ്ടെങ്കിൽ പേര്, മീഡിയാ പെർമിഷൻ എന്നിവ അപ്ഡേറ്റ് ചെയ്യുകയോ ചെയ്യുന്നു
                 cursor.execute("""
                     INSERT INTO users (user_id, first_name, allow_media) 
                     VALUES (%s, %s, TRUE) 
@@ -259,7 +257,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f'Hello {user_name}, I was just waiting for your message. How can I tempt you today? 😉')
 
 # ------------------------------------------------------------------
-# 🌟 New Function: To stop sending media (/stopmedia) 🌟
+# 🌟 പുതിയ ഫംഗ്ഷൻ: മീഡിയ അയക്കുന്നത് നിർത്താൻ (/stopmedia) 🌟
 # ------------------------------------------------------------------
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -269,7 +267,7 @@ async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         with db_connection.cursor() as cursor:
-            # Set allow_media to False
+            # allow_media False ആക്കുന്നു
             cursor.execute(
                 "UPDATE users SET allow_media = FALSE WHERE user_id = %s", (user_id,)
             )
@@ -287,7 +285,7 @@ async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("My circuits are acting up, baby. Couldn't update your setting.")
 
 # ------------------------------------------------------------------
-# 🌟 New Function: To allow media sending again (/allowmedia) 🌟
+# 🌟 പുതിയ ഫംഗ്ഷൻ: മീഡിയ അയക്കാൻ വീണ്ടും തുടങ്ങാൻ (/allowmedia) 🌟
 # ------------------------------------------------------------------
 async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -297,7 +295,7 @@ async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         with db_connection.cursor() as cursor:
-            # Set allow_media to True
+            # allow_media True ആക്കുന്നു
             cursor.execute(
                 "UPDATE users SET allow_media = TRUE WHERE user_id = %s", (user_id,)
             )
@@ -313,7 +311,7 @@ async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         await update.message.reply_text("My circuits are acting up, baby. Couldn't update your setting.")
 
-# /users command (User Count)
+# /users കമാൻഡ് (യൂസർ കൗണ്ട്)
 async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_TELEGRAM_ID:
         await update.message.reply_text("This command is for the admin only.")
@@ -335,13 +333,13 @@ async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Total users: {count}")
 
 # ------------------------------------------------------------------
-# --- New Function (/new) - with Media Permission Check ---
+# --- New ഫംഗ്ഷൻ (/new) - മീഡിയാ പെർമിഷൻ ചെക്കോടുകൂടി ---
 # ------------------------------------------------------------------
 async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    current_time = datetime.now(timezone.utc) # Use UTC time
+    current_time = datetime.now(timezone.utc) # UTC സമയം ഉപയോഗിക്കുന്നു
     
-    # Get message object from command or button click
+    # കമാൻഡ് മെസ്സേജിൽ നിന്നോ ബട്ടൺ ക്ലിക്കിൽ നിന്നോ ഉള്ള മെസ്സേജ് ഒബ്ജക്റ്റ് എടുക്കുന്നു
     if update.message is None:
         message_obj = update.callback_query.message
     else:
@@ -351,14 +349,14 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message_obj.reply_text("Database connection failed. Cannot fetch media list.")
         return
         
-    # 🌟 1. Check allow_media permission 🌟
+    # 🌟 1. allow_media പരിശോധിക്കുന്നു 🌟
     try:
         with db_connection.cursor() as cursor:
             cursor.execute(
                 "SELECT allow_media FROM users WHERE user_id = %s", (user_id,)
             )
             result = cursor.fetchone()
-            # Default to True if user is new or setting is null
+            # ഉപയോക്താവ് ഡാറ്റാബേസിൽ ഇല്ലെങ്കിൽ (പുതിയ യൂസർ), True എന്ന് കണക്കാക്കുന്നു
             allow_media_flag = result[0] if result and result[0] is not None else True
             
             if not allow_media_flag:
@@ -372,10 +370,10 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db_connection.rollback()
         except:
             pass
-        # Continue even if DB check fails, to allow service if possible
+        # ഡാറ്റാബേസ് എറർ വന്നാൽ പോലും മുന്നോട്ട് പോകുന്നു (മീഡിയാ പെർമിഷൻ ഒഴിവാക്കുന്നു)
         pass 
 
-    # 2. Check Cooldown
+    # 2. കൂൾഡൗൺ പരിശോധിക്കുന്നു
     try:
         with db_connection.cursor() as cursor:
             cursor.execute(
@@ -384,7 +382,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result = cursor.fetchone()
             
             if result and result[0]:
-                # Treat time from PostgreSQL as UTC
+                # PostgreSQL ൽ നിന്ന് കിട്ടുന്ന സമയം UTC ആയി കണക്കാക്കുന്നു
                 last_time = result[0].replace(tzinfo=timezone.utc) 
                 elapsed = current_time - last_time
                 
@@ -393,14 +391,14 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     remaining_minutes = int(remaining_seconds / 60)
                     
                     if remaining_minutes >= 1:
-                        # Reply in minutes if more than 1 minute remains
+                        # 1 മിനിറ്റ് മുഴുവനായി ഉണ്ടെങ്കിൽ മിനിറ്റിൽ മറുപടി നൽകുന്നു
                         await message_obj.reply_text(
                             f"Slow down, darling! You need to wait {remaining_minutes} more minutes "
                             f"before you can request a new photo. Take a breath. 😉"
                         )
                         return
                     else:
-                        # Reply in seconds if less than 1 minute remains
+                        # 1 മിനിറ്റിൽ താഴെയാണെങ്കിൽ സെക്കൻഡിൽ മറുപടി നൽകുന്നു
                         await message_obj.reply_text(
                             f"Slow down, darling! Wait {int(remaining_seconds)} more seconds. "
                             f"I'm worth the wait, I promise. 😉"
@@ -408,7 +406,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         return
     except Exception as e:
         logger.error(f"Cooldown check failed: {e}")
-        # Continue if DB check fails
+        # ഡാറ്റാബേസ് എറർ വന്നാൽ പോലും മുന്നോട്ട് പോകുന്നു (കൂൾഡൗൺ ലോജിക് ഒഴിവാക്കുന്നു)
         try:
             db_connection.rollback()
         except:
@@ -417,10 +415,10 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await message_obj.reply_text("Searching for the perfect photo... wait for Tae. 😉")
 
-    # 3. Send Media
+    # 3. മീഡിയ അയക്കുന്നു
     try:
         with db_connection.cursor() as cursor:
-            # Get a random media ID from the database
+            # ഡാറ്റാബേസിൽ നിന്ന് റാൻഡം ആയി ഒരു മീഡിയ ID എടുക്കുന്നു
             cursor.execute("SELECT file_type, file_id FROM channel_media ORDER BY RANDOM() LIMIT 1")
             result = cursor.fetchone()
 
@@ -450,14 +448,14 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  await message_obj.reply_text("Found a media, but the type is unknown.")
                  return
 
-            # 4. Update Cooldown Time and Save Sent Message
+            # 4. കൂൾഡൗൺ ടൈമും അയച്ച മെസ്സേജും അപ്ഡേറ്റ് ചെയ്യുന്നു
             with db_connection.cursor() as cursor:
-                 # Update cooldown time (using current UTC time)
+                 # കൂൾഡൗൺ ടൈം അപ്ഡേറ്റ് ചെയ്യുന്നു (നിലവിലെ UTC സമയം ഉപയോഗിച്ച്)
                  cursor.execute(
                     "INSERT INTO cooldown (user_id, last_command_time) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET last_command_time = EXCLUDED.last_command_time;",
-                    (user_id, current_time) 
+                    (user_id, current_time) # ഇവിടെ current_time (UTC) ഉപയോഗിക്കുന്നു
                  )
-                 # Save sent message for 24-hour deletion
+                 # അയച്ച മെസ്സേജ് 24 മണിക്കൂർ ഡിലീറ്റിനായി സേവ് ചെയ്യുന്നു
                  cursor.execute(
                      "INSERT INTO sent_media (chat_id, message_id) VALUES (%s, %s)",
                      (message_obj.chat_id, sent_msg.message_id)
@@ -477,10 +475,10 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message_obj.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
 
 # ------------------------------------------------------------------
-# --- Function to delete old sent messages (/delete_old_media) ---
+# --- മെസ്സേജ് ഡിലീറ്റ് ചെയ്യാനുള്ള ഫംഗ്ഷൻ (/delete_old_media) ---
 # ------------------------------------------------------------------
 async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check if user is admin
+    # ഇവിടെ update.message പരിശോധിക്കുന്നതിനു പകരം effective_chat ഉപയോഗിക്കുന്നു
     if update.effective_user.id != ADMIN_TELEGRAM_ID:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="This command is for the admin only.")
         return
@@ -513,10 +511,8 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     cursor.execute("DELETE FROM sent_media WHERE id = %s", (msg_id_db,))
                     deleted_count += 1
                 except Forbidden:
-                    # If the bot is blocked or removed from the chat, just delete the DB record
                     cursor.execute("DELETE FROM sent_media WHERE id = %s", (msg_id_db,))
                 except BadRequest:
-                    # Message already deleted, just delete the DB record
                     cursor.execute("DELETE FROM sent_media WHERE id = %s", (msg_id_db,))
                 except Exception as e:
                     logger.error(f"Error deleting message {message_id}: {e}")
@@ -536,7 +532,7 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message_obj.reply_text("An error occurred during media cleanup.")
 
 # ------------------------------------------------------------------
-# --- Function to remove deleted media from DB (/clearmedia) ---
+# --- ഡിലീറ്റ് ചെയ്ത മീഡിയകൾ നീക്കം ചെയ്യാനുള്ള ഫംഗ്ഷൻ (/clearmedia) ---
 # ------------------------------------------------------------------
 async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID:
@@ -560,7 +556,7 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         for message_id, media_type, file_id in all_media:
             try:
-                # Test sending the media (This checks if the file is still accessible by Telegram)
+                # ടെസ്റ്റ് മെസ്സേജ് അയച്ചു നോക്കുന്നു (ഇവിടെയാണ് ഡിലീറ്റ് ചെയ്ത ഫയലുകൾ കണ്ടെത്തുന്നത്)
                 if media_type == 'photo':
                     temp_msg = await context.bot.send_photo(
                         chat_id=ADMIN_TELEGRAM_ID, 
@@ -580,11 +576,11 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                         read_timeout=5
                     )
                 
-                # Delete the test message immediately
+                # ടെസ്റ്റ് മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
                 await context.bot.delete_message(chat_id=ADMIN_TELEGRAM_ID, message_id=temp_msg.message_id) 
                 
             except BadRequest as e:
-                # If Telegram says 'File not found' or 'file_id is invalid', delete the DB record
+                # ഫയൽ ഇൻവാലിഡ് ആണെങ്കിൽ ഡിലീറ്റ് ചെയ്യുക
                 if "File not found" in str(e) or "file_id is invalid" in str(e):
                     with db_connection.cursor() as cursor_del:
                         cursor_del.execute("DELETE FROM channel_media WHERE message_id = %s", (message_id,))
@@ -597,7 +593,7 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
             except Exception as e:
                 logger.error(f"Error checking media ID {message_id}: {e}")
             
-            await asyncio.sleep(0.1) # Small delay to respect Telegram API limits
+            await asyncio.sleep(0.1) # ടെലിഗ്രാം API ലിമിറ്റ് ഒഴിവാക്കാൻ ചെറിയൊരു ഡിലേ
 
         await message_obj.reply_text(
             f"Media cleanup complete. Checked {total_count} files.\n"
@@ -613,17 +609,17 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         await message_obj.reply_text(f"Cleanup process encountered a critical error: {e}")
 
 # ------------------------------------------------------------------
-# --- ADMIN Menu Function (/admin) ---
+# --- ADMIN മെനു ഫംഗ്ഷൻ (/admin) ---
 # ------------------------------------------------------------------
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     
-    # Check if user is admin
+    # അഡ്മിൻ ആണോ എന്ന് പരിശോധിക്കുന്നു
     if user_id != ADMIN_TELEGRAM_ID:
         await update.message.reply_text("This command is for the admin only. 😉")
         return
 
-    # Create inline keyboard
+    # ഇൻലൈൻ കീബോർഡ് ഉണ്ടാക്കുന്നു
     keyboard = [
         [InlineKeyboardButton("Total Users 👥", callback_data='admin_users'),
          InlineKeyboardButton("Send New Photo 📸", callback_data='admin_new_photo')],
@@ -639,27 +635,27 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
 # ------------------------------------------------------------------
-# --- Callback Query Handler (for button clicks) ---
+# --- Callback Query Handler (ബട്ടണുകൾ അമർത്തുമ്പോൾ) ---
 # ------------------------------------------------------------------
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
 
-    # Check if user is admin
+    # അഡ്മിൻ ആണോ എന്ന് പരിശോധിക്കുന്നു
     if user_id != ADMIN_TELEGRAM_ID:
         await query.answer("This action is restricted to the bot admin.")
         return
 
-    await query.answer() # Close the Telegram loading state
+    await query.answer() # ടെലിഗ്രാം ലോഡിംഗ് നിർത്താൻ
 
-    # Edit the message text to show the command is running
+    # ബട്ടൺ അമർത്തിയ മെസ്സേജ് എഡിറ്റ് ചെയ്യുന്നു
     await context.bot.edit_message_text(
         text=f"Running command: {query.data.replace('admin_', '/').upper()}...",
         chat_id=query.message.chat_id,
         message_id=query.message.message_id
     )
 
-    # Call commands based on button data
+    # കമാൻഡുകൾ വിളിക്കുന്നു
     if query.data == 'admin_users':
         await user_count(query, context)
     elif query.data == 'admin_new_photo':
@@ -669,7 +665,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_delete_old':
         await delete_old_media(query, context)
     elif query.data == 'admin_broadcast_text':
-        # Ask admin for the broadcast message
+        # ബ്രോഡ്കാസ്റ്റ് ടെക്സ്റ്റ് ചെയ്യാൻ യൂസറിനോട് മെസ്സേജ് ആവശ്യപ്പെടുന്നു
         await context.bot.send_message(
             chat_id=user_id,
             text="Please type the message you want to broadcast (starts with /broadcast):"
@@ -677,10 +673,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ------------------------------------------------------------------
-# --- Text Broadcast Function (/broadcast) ---
+# --- ടെക്സ്റ്റ് ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/broadcast) ---
 # ------------------------------------------------------------------
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Handle message object from command or callback
+    # ഈ ഫംഗ്ഷനും callback_query കൈകാര്യം ചെയ്യണം
     if update.message is None:
         message_obj = update.callback_query.message
         user_id = update.callback_query.from_user.id
@@ -692,8 +688,8 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message_obj.reply_text("Broadcast command is for the admin only.")
         return
 
-    # Extract broadcast text
-    if message_obj.text and message_obj.text.startswith('/broadcast'):
+    # മെസ്സേജ് ടെക്സ്റ്റ് എടുക്കുന്നു
+    if message_obj.text.startswith('/broadcast'):
         broadcast_text = message_obj.text.replace('/broadcast', '', 1).strip()
     elif len(context.args) > 0:
         broadcast_text = " ".join(context.args)
@@ -750,7 +746,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message_obj.reply_text("Database connection failed. Cannot fetch user list.")
 
 # ------------------------------------------------------------------
-# --- Media Broadcast Function (/bmedia) ---
+# --- മീഡിയ ബ്രോഡ്കാസ്റ്റ് ഫംഗ്ഷൻ (/bmedia) ---
 # ------------------------------------------------------------------
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -830,7 +826,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Database connection failed. Cannot fetch user list.")
 
 
-# Function to handle text messages (AI Chat)
+# ടെക്സ്റ്റ് മെസ്സേജുകൾ കൈകാര്യം ചെയ്യുന്ന ഫംഗ്ഷൻ (AI ചാറ്റ്)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not groq_client:
@@ -842,13 +838,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     user_username = update.message.from_user.username
 
-    # Get sender info
+    # യൂസർ നെയിം എടുക്കുന്നു
     if user_username:
         sender_info = f"@{user_username} ({user_name}, ID: {user_id})"
     else:
         sender_info = f"{user_name} (ID: {user_id})"
 
-    # --- Forward Message to Admin ---
+    # --- അഡ്മിന് മെസ്സേജ് ഫോർവേഡ് ചെയ്യുന്നു ---
     try:
         await context.bot.send_message(
             chat_id=ADMIN_TELEGRAM_ID, 
@@ -858,17 +854,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Failed to forward message to admin: {e}")
     # ---------------------------------------------
 
-    # Show "Typing..." action
+    # "Typing..." എന്ന് കാണിക്കാൻ
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     try:
-        # Start a chat session for the user (to remember context)
+        # യൂസർക്ക് വേണ്ടി ഒരു ചാറ്റ് സെഷൻ തുടങ്ങുന്നു (പഴയ കാര്യങ്ങൾ ഓർമ്മിക്കാൻ)
         if user_id not in chat_history:
              chat_history[user_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
         
         chat_history[user_id].append({"role": "user", "content": user_text})
         
-        # Send message to Groq API
+        # Groq API-ലേക്ക് മെസ്സേജ് അയക്കുന്നു
         chat_completion = groq_client.chat.completions.create(
             messages=chat_history[user_id],
             model="llama-3.1-8b-instant",
@@ -876,7 +872,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_text = chat_completion.choices[0].message.content.strip()
         
-        # Use emoji generator
+        # ഇമോജി ജനറേറ്റർ ഉപയോഗിക്കുന്നു
         final_reply = add_emojis_based_on_mood(reply_text)
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
@@ -890,18 +886,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not all([TOKEN, WEBHOOK_URL, GROQ_API_KEY]):
-        logger.error("Error: Required Environment Variables (TOKEN, WEBHOOK_URL, GROQ_API_KEY) are not set.")
+        logger.error("Error: Required Environment Variables are not set.")
         return
-    
-    # 🛑 Crucial Check: Is DATABASE_URL present?
-    if not DATABASE_URL:
-        logger.error("Error: DATABASE_URL Environment Variable is not set. Database operations will fail.")
-    else:
-        logger.info("DATABASE_URL is present. Attempting database operations.")
 
     application = Application.builder().token(TOKEN).build()
 
-    # Register commands
+    # കമാൻഡുകൾ രജിസ്റ്റർ ചെയ്യുന്നു
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("broadcast", broadcast_message))
@@ -909,27 +899,29 @@ def main():
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
-    application.add_handler(CommandHandler("admin", admin_menu)) 
+    application.add_handler(CommandHandler("admin", admin_menu)) # <-- പുതിയ admin കമാൻഡ്
     
-    # 🌟 New Media Control Commands 🌟
+    # 🌟 പുതിയ മീഡിയാ കൺട്രോൾ കമാൻഡുകൾ 🌟
     application.add_handler(CommandHandler("stopmedia", stop_media))
     application.add_handler(CommandHandler("allowmedia", allow_media))
 
-    application.add_handler(CallbackQueryHandler(button_handler)) 
+    application.add_handler(CallbackQueryHandler(button_handler)) # <-- ബട്ടൺ ക്ലിക്കുകൾ കൈകാര്യം ചെയ്യാൻ
     
-    # 1. Channel Media Collection Handler
+    # 1. ചാനൽ മീഡിയ കളക്ഷൻ ഹാൻഡ്ലർ (ചാനലിൽ പുതിയ മീഡിയ പോസ്റ്റ് ചെയ്യുമ്പോൾ)
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
 
-    # 2. AI Chat Handler
+    # 2. AI ചാറ്റ് ഹാൻഡ്ലർ (പ്രൈവറ്റ് മെസ്സേജ് വന്നാൽ മാത്രം)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
-    # Webhook Setup (for 24/7 hosting)
+    # വെബ്ഹൂക്ക് സെറ്റപ്പ് (24/7 ഹോസ്റ്റിങ്ങിന്)
     logger.info(f"Starting webhook on port {PORT}")
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path=TOKEN, 
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
+        # ടെലിഗ്രാം സെർവർ കൂടുതൽ സമയം കാത്തിരിക്കാൻ read_timeout വർദ്ധിപ്പിച്ചു
+        read_timeout=35
     )
 
 if __name__ == '__main__':
