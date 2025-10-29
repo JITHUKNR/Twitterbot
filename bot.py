@@ -12,7 +12,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.error import Forbidden, BadRequest 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup 
 from datetime import datetime, timedelta, timezone 
-from psycopg2 import errors as pg_errors # PostgreSQL പിഴവുകൾ കൈകാര്യം ചെയ്യാൻ
+from psycopg2 import errors as pg_errors 
 
 # -------------------- കൂൾഡൗൺ സമയം --------------------
 COOLDOWN_TIME_SECONDS = 180 # 3 മിനിറ്റ് = 180 സെക്കൻഡ്
@@ -81,101 +81,107 @@ def add_emojis_based_on_mood(text):
         return text + " 😉💞"
 
 # ------------------------------------------------------------------
-# --- ഡാറ്റാബേസ് കണക്ഷൻ വീണ്ടും സ്ഥാപിക്കാൻ ശ്രമിക്കുന്ന ഫംഗ്ഷൻ ---
+# --- ഡാറ്റാബേസ് കണക്ഷൻ വീണ്ടും സ്ഥാപിക്കാൻ ശ്രമിക്കുന്ന ഫംഗ്ഷൻ (റീട്രൈ ലോജിക്കോടുകൂടി) ---
 # ------------------------------------------------------------------
-async def establish_db_connection():
+async def establish_db_connection(max_retries=3):
     global db_connection, db_connection_initialized
     
-    # 1. നിലവിലെ കണക്ഷൻ സാധുവാണോ എന്ന് പരിശോധിക്കുന്നു
-    if db_connection is not None:
-        try:
-            with db_connection.cursor() as cursor:
-                # ഒരു ലളിതമായ query നടത്തി കണക്ഷൻ ജീവനോടെയുണ്ടോ എന്ന് നോക്കുന്നു
-                cursor.execute("SELECT 1")
-            return True
-        except Exception as e:
-            logger.warning(f"Existing DB connection failed health check or query failed: {e}. Attempting reconnection.")
-            
-            # പരാജയപ്പെട്ട ട്രാൻസാക്ഷൻ rollback ചെയ്യാൻ ശ്രമിക്കുന്നു (Aborted issue പരിഹരിക്കാൻ)
+    for attempt in range(max_retries):
+        # 1. നിലവിലെ കണക്ഷൻ സാധുവാണോ എന്ന് പരിശോധിക്കുന്നു
+        if db_connection is not None:
             try:
-                if db_connection and not db_connection.closed:
-                    db_connection.rollback()
-                    db_connection.close()
-            except:
-                pass
-            db_connection = None # കണക്ഷൻ നഷ്ടപ്പെട്ടാൽ None ആക്കുന്നു
+                with db_connection.cursor() as cursor:
+                    # ഒരു ലളിതമായ query നടത്തി കണക്ഷൻ ജീവനോടെയുണ്ടോ എന്ന് നോക്കുന്നു
+                    cursor.execute("SELECT 1")
+                return True
+            except Exception as e:
+                logger.warning(f"Existing DB connection failed health check on attempt {attempt+1}: {e}. Attempting reconnection.")
+                
+                # പരാജയപ്പെട്ട ട്രാൻസാക്ഷൻ rollback ചെയ്യാൻ ശ്രമിക്കുന്നു (Aborted issue പരിഹരിക്കാൻ)
+                try:
+                    if db_connection and not db_connection.closed:
+                        db_connection.rollback()
+                        db_connection.close()
+                except:
+                    pass
+                db_connection = None # കണക്ഷൻ നഷ്ടപ്പെട്ടാൽ None ആക്കുന്നു
 
-    # 2. DATABASE_URL ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു
-    if not DATABASE_URL:
-        logger.error("DATABASE_URL is not set.")
-        return False
-        
-    # 3. പുതിയ കണക്ഷൻ സ്ഥാപിക്കാൻ ശ്രമിക്കുന്നു
-    try:
-        up.uses_netloc.append("postgres")
-        db_url = up.urlparse(DATABASE_URL)
-        db_connection = psycopg2.connect(
-            database=db_url.path[1:],
-            user=db_url.username,
-            password=db_url.password,
-            host=db_url.hostname,
-            port=db_url.port,
-            # നെറ്റ്വർക്ക് ടൈംഔട്ട് പ്രശ്നം പരിഹരിക്കാൻ ടൈംഔട്ട് 30 സെക്കൻഡായി വർദ്ധിപ്പിച്ചു
-            connect_timeout=30 
-        )
-        
-        # 4. ടേബിളുകൾ ഉണ്ടാക്കുന്നു (ആദ്യം മാത്രം)
-        if not db_connection_initialized:
-            with db_connection.cursor() as cursor:
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        user_id BIGINT PRIMARY KEY,
-                        first_name TEXT,
-                        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        allow_media BOOLEAN DEFAULT TRUE 
-                    );
-                """)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS channel_media (
-                        message_id BIGINT PRIMARY KEY,
-                        file_type TEXT,
-                        file_id TEXT
-                    );
-                """)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS sent_media (
-                        id SERIAL PRIMARY KEY,
-                        chat_id BIGINT NOT NULL,
-                        message_id INTEGER NOT NULL,
-                        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
-                """)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS cooldown (
-                        user_id BIGINT PRIMARY KEY,
-                        last_command_time TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
-                    );
-                """)
-            db_connection.commit()
-            db_connection_initialized = True
+        # 2. DATABASE_URL ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു
+        if not DATABASE_URL:
+            logger.error("DATABASE_URL is not set.")
+            return False
             
-        # allow_media കോളം ഇല്ലെങ്കിൽ ചേർക്കുന്നു
+        # 3. പുതിയ കണക്ഷൻ സ്ഥാപിക്കാൻ ശ്രമിക്കുന്നു
         try:
-            with db_connection.cursor() as cursor:
-                cursor.execute("SELECT allow_media FROM users LIMIT 0")
-        except pg_errors.UndefinedColumn:
-            with db_connection.cursor() as cursor:
-                cursor.execute("ALTER TABLE users ADD COLUMN allow_media BOOLEAN DEFAULT TRUE")
-            db_connection.commit()
-            logger.info("Added 'allow_media' column to users table.")
+            up.uses_netloc.append("postgres")
+            db_url = up.urlparse(DATABASE_URL)
+            db_connection = psycopg2.connect(
+                database=db_url.path[1:],
+                user=db_url.username,
+                password=db_url.password,
+                host=db_url.hostname,
+                port=db_url.port,
+                # നെറ്റ്വർക്ക് ടൈംഔട്ട് പ്രശ്നം പരിഹരിക്കാൻ ടൈംഔട്ട് 30 സെക്കൻഡായി വർദ്ധിപ്പിച്ചു
+                connect_timeout=30 
+            )
+            
+            # 4. ടേബിളുകൾ ഉണ്ടാക്കുന്നു (ആദ്യം മാത്രം)
+            if not db_connection_initialized:
+                with db_connection.cursor() as cursor:
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            user_id BIGINT PRIMARY KEY,
+                            first_name TEXT,
+                            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            allow_media BOOLEAN DEFAULT TRUE 
+                        );
+                    """)
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS channel_media (
+                            message_id BIGINT PRIMARY KEY,
+                            file_type TEXT,
+                            file_id TEXT
+                        );
+                    """)
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS sent_media (
+                            id SERIAL PRIMARY KEY,
+                            chat_id BIGINT NOT NULL,
+                            message_id INTEGER NOT NULL,
+                            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS cooldown (
+                            user_id BIGINT PRIMARY KEY,
+                            last_command_time TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
+                        );
+                    """)
+                db_connection.commit()
+                db_connection_initialized = True
+                
+            # allow_media കോളം ഇല്ലെങ്കിൽ ചേർക്കുന്നു
+            try:
+                with db_connection.cursor() as cursor:
+                    cursor.execute("SELECT allow_media FROM users LIMIT 0")
+            except pg_errors.UndefinedColumn:
+                with db_connection.cursor() as cursor:
+                    cursor.execute("ALTER TABLE users ADD COLUMN allow_media BOOLEAN DEFAULT TRUE")
+                db_connection.commit()
+                logger.info("Added 'allow_media' column to users table.")
 
-        logger.info("Database connection successfully established/re-established.")
-        return True
+            logger.info("Database connection successfully established/re-established.")
+            return True
+        
+        except Exception as e:
+            logger.error(f"Failed to establish DB connection on attempt {attempt+1}: {e}")
+            db_connection = None 
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt) # Exponential backoff
+            else:
+                return False
     
-    except Exception as e:
-        logger.error(f"Failed to establish DB connection: {e}")
-        db_connection = None # കണക്ഷൻ പരാജയപ്പെട്ടാൽ അത് None ആക്കുന്നു
-        return False
+    return False # പരമാവധി റീട്രൈ കഴിഞ്ഞാൽ False നൽകുന്നു
 
 # ------------------------------------------------------------------
 # --- പുതിയ ഫംഗ്ഷൻ: മീഡിയ ID-കൾ ഡാറ്റാബേസിൽ ശേഖരിക്കുന്നു ---
