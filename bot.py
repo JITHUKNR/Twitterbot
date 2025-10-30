@@ -383,7 +383,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  sent_msg = await message_obj.reply_video(
                     video=file_id, 
                     caption=caption_text,
-                    has_spoiler=True,
+                    has_spoiler=False,
                     # 🔒 ഇവിടെയാണ് protect_content ചേർത്തിരിക്കുന്നത് 🔒
                     protect_content=True
                  )
