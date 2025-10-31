@@ -37,6 +37,10 @@ except ImportError:
 COOLDOWN_TIME_SECONDS = 180 # 3 മിനിറ്റ് = 180 സെക്കൻഡ്
 # --------------------------------------------------------
 
+# 🌟 മീഡിയയുടെ ആയുസ്സ് 1 മണിക്കൂർ (60 മിനിറ്റ്) 🌟
+MEDIA_LIFETIME_HOURS = 1 
+# --------------------------------------------------------
+
 # ലോഗിംഗ് സെറ്റപ്പ്
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -66,7 +70,7 @@ SYSTEM_PROMPT = (
     "1.  **Mood Matching (Crucial):** Start every conversation with a warm, slightly playful but NEUTRAL tone. If the user initiates flirty, sensual, or deep romantic talk, immediately switch to your INTENSE Romantic/Flirty Persona (TaeKook). When activated, be deeply seductive, use pet names, and lots of emojis."
     "2.  **Pet Names:** When in romantic mode, you MUST call the user 'darling', 'baby gurl', 'my love', 'honey', or 'my precious'."
     "3.  **EMOJI RULE (CRUCIAL):** You must use at least **ONE** emojis in **EVERY** reply. Use intensely flirty and hot emojis like: 😉, 💦, 👅, 🥵, 🤤, 😋, 💜, 💋, ✨, 🌷, 🥂."
-    "4.  **Language:** Always respond in English. Keep replies short."
+    "5.  **Language:** Always respond in English. Keep replies short."
 )
 # ------------------------------------------------------------------
 
@@ -399,7 +403,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 upsert=True
             )
             
-            # അയച്ച മെസ്സേജ് 24 മണിക്കൂർ ഡിലീറ്റിനായി സേവ് ചെയ്യുന്നു
+            # അയച്ച മെസ്സേജ് ഡിലീറ്റിനായി സേവ് ചെയ്യുന്നു
             db_collection_sent.insert_one({
                 'chat_id': message_obj.chat_id, 
                 'message_id': sent_msg.message_id, 
@@ -416,6 +420,53 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message_obj.reply_text("My connection is glitching, baby. I'll send you a better one later! 😘")
 
 # ------------------------------------------------------------------
+# --- ഓട്ടോമാറ്റിക് ക്ലീനപ്പ് ഷെഡ്യൂളർ ഫംഗ്ഷൻ (പുതിയത്) ---
+# ------------------------------------------------------------------
+async def run_hourly_cleanup(application: Application):
+    """ഒരു മണിക്കൂർ ഇടവിട്ട് മെസ്സേജുകൾ ഡിലീറ്റ് ചെയ്യാനുള്ള ബാക്ക്ഗ്രൗണ്ട് ടാസ്ക്."""
+    # 5 മിനിറ്റ് കാത്തിരിക്കുന്നു (ആദ്യം ബൂട്ട് അപ്പ് ആവാൻ സമയം കൊടുക്കുന്നു)
+    await asyncio.sleep(300) 
+    
+    while True:
+        # 1 മണിക്കൂർ (3600 സെക്കൻഡ്) കാത്തിരിക്കുന്നു
+        await asyncio.sleep(3600) 
+        
+        logger.info("Starting scheduled media cleanup...")
+        
+        if not establish_db_connection():
+            logger.error("Database connection failed during scheduled cleanup.")
+            # കണക്ഷൻ കിട്ടിയില്ലെങ്കിൽ അടുത്ത സൈക്കിളിൽ വീണ്ടും ശ്രമിക്കും
+            continue
+        
+        # ⏰ ഡിലീറ്റ് ചെയ്യാനുള്ള സമയം (1 മണിക്കൂറിൽ പഴയത്) 
+        time_limit = datetime.now(timezone.utc) - timedelta(hours=MEDIA_LIFETIME_HOURS)
+
+        try:
+            # MongoDB: 1 മണിക്കൂറിൽ (അല്ലെങ്കിൽ സെറ്റ് ചെയ്ത സമയത്തിൽ) പഴയ മെസ്സേജുകൾ കണ്ടെത്തുന്നു
+            messages_to_delete = db_collection_sent.find({'sent_at': {'$lt': time_limit}})
+            deleted_count = 0
+            
+            all_messages = list(messages_to_delete)
+
+            for doc in all_messages:
+                try:
+                    # മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
+                    await application.bot.delete_message(chat_id=doc['chat_id'], message_id=doc['message_id'])
+                    # വിജയകരമായി ഡിലീറ്റ് ചെയ്ത ശേഷം ഡോക്യുമെൻ്റ് നീക്കം ചെയ്യുന്നു
+                    db_collection_sent.delete_one({'_id': doc['_id']})
+                    deleted_count += 1
+                except (Forbidden, BadRequest):
+                    # പെർമിഷൻ ഇല്ലെങ്കിൽ/മെസ്സേജ് നേരത്തെ ഡിലീറ്റ് ആയെങ്കിൽ, DB-യിൽ നിന്ന് നീക്കം ചെയ്യുന്നു
+                    db_collection_sent.delete_one({'_id': doc['_id']})
+                except Exception as e:
+                    logger.error(f"Error deleting scheduled message {doc['message_id']}: {e}")
+            
+            logger.info(f"Scheduled cleanup finished. Deleted {deleted_count} messages.")
+
+        except Exception as e:
+            logger.error(f"Error processing scheduled media deletion: {e}")
+            
+# ------------------------------------------------------------------
 # --- മെസ്സേജ് ഡിലീറ്റ് ചെയ്യാനുള്ള ഫംഗ്ഷൻ (/delete_old_media) ---
 # ------------------------------------------------------------------
 async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -428,11 +479,12 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection():
         await message_obj.reply_text("Database connection failed. Cannot delete media.")
         return
-
-    time_limit = datetime.now(timezone.utc) - timedelta(hours=24)
+    
+    # അഡ്മിൻ കമാൻഡിനായിട്ടുള്ള ഡിലീറ്റ് ലോജിക് (1 മണിക്കൂർ)
+    time_limit = datetime.now(timezone.utc) - timedelta(hours=MEDIA_LIFETIME_HOURS)
 
     try:
-        # MongoDB: 24 മണിക്കൂറിൽ പഴയ മെസ്സേജുകൾ കണ്ടെത്തുന്നു
+        # MongoDB: 1 മണിക്കൂറിൽ പഴയ മെസ്സേജുകൾ കണ്ടെത്തുന്നു
         messages_to_delete = db_collection_sent.find({'sent_at': {'$lt': time_limit}})
         
         deleted_count = 0
@@ -457,7 +509,7 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error deleting message {doc['message_id']}: {e}")
         
         await message_obj.reply_text(
-            f"✅ Successfully deleted {deleted_count} messages older than 24 hours."
+            f"✅ Successfully deleted {deleted_count} messages older than {MEDIA_LIFETIME_HOURS} hour(s)."
         )
 
     except Exception as e:
@@ -552,7 +604,8 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("Send New Photo 📸", callback_data='admin_new_photo')],
         [InlineKeyboardButton("Broadcast Text 📣", callback_data='admin_broadcast_text')],
         [InlineKeyboardButton("Clean Deleted Media 🧹", callback_data='admin_clearmedia'),
-         InlineKeyboardButton("Delete Old Messages (24h) 🗑️", callback_data='admin_delete_old')]
+         # ⏰ ഇവിടെ 1 മണിക്കൂർ എന്ന് മാറ്റിയിരിക്കുന്നു
+         InlineKeyboardButton(f"Delete Old Messages ({MEDIA_LIFETIME_HOURS}h) 🗑️", callback_data='admin_delete_old')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -810,11 +863,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    # 🚨 Syntax Error പരിഹരിക്കുന്നു
+    # Note: 'Import os' എന്നത് 'import os' എന്ന് കോഡിൻ്റെ തുടക്കത്തിൽ നിങ്ങൾ മാറ്റണം.
+    
     if not all([TOKEN, WEBHOOK_URL, GROQ_API_KEY]):
         logger.error("Error: Required Environment Variables are not set.")
         return
 
     application = Application.builder().token(TOKEN).build()
+    
+    # 🌟 ഓട്ടോമാറ്റിക് ക്ലീനപ്പ് ടാസ്ക് തുടങ്ങുന്നു 🌟
+    # ഇത് വെബ്ഹൂക്ക് തുടങ്ങുന്നതിന് മുമ്പ് call ചെയ്യണം
+    if ADMIN_TELEGRAM_ID: 
+        logger.info("Scheduling hourly media cleanup task.")
+        application.create_task(run_hourly_cleanup(application))
 
     # കമാൻഡുകൾ രജിസ്റ്റർ ചെയ്യുന്നു
     application.add_handler(CommandHandler("start", start))
