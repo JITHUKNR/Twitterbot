@@ -4,7 +4,7 @@ import asyncio
 import random
 import requests 
 from groq import Groq
-from telegram import Update, BotCommand  # <--- BotCommand ഇംപോർട്ട് ചെയ്തു
+from telegram import Update, BotCommand 
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
@@ -42,9 +42,9 @@ PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 MONGO_URI = os.environ.get('MONGO_URI') 
 
-# ✅✅✅ YOUR ID ✅✅✅
+# ✅✅✅ YOUR ID IS SET HERE ✅✅✅
 ADMIN_TELEGRAM_ID = 7567364364 
-# ✅✅✅✅✅✅✅✅✅✅
+# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅
 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 
@@ -365,6 +365,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
+# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
@@ -449,7 +450,7 @@ async def post_init(application: Application):
     # Set up the Menu Button Commands
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
-        BotCommand("character", "Change Character/Bias 💜"), # <--- ഇത് ഇവിടെ ചേർത്തു
+        BotCommand("character", "Change Character/Bias 💜"), # <--- Menu Button
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
@@ -479,12 +480,13 @@ def main():
     
     # 🌟 CHARACTER COMMAND (MENU) 🌟
     application.add_handler(CommandHandler("character", switch_character))
-    application.add_handler(CommandHandler("switch", switch_character)) # Both work
+    application.add_handler(CommandHandler("switch", switch_character)) 
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
+    # 🌟 FIXED MEDIA ID FINDER (Correct v20 Filter Syntax) 🌟
     application.add_handler(MessageHandler(
-        (filters.ANIMATION | filters.VIDEO | filters.STICKER | filters.PHOTO) & filters.User(ADMIN_TELEGRAM_ID), 
+        (filters.Animation.ALL | filters.Video.ALL | filters.Sticker.ALL | filters.Photo) & filters.User(ADMIN_TELEGRAM_ID), 
         get_media_id
     ))
     
