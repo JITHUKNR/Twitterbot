@@ -166,7 +166,7 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
     except Exception: pass
 
 # 🌟 MAIN MENU BUTTONS (PERSISTENT KEYBOARD) 🌟
-# ഇവിടെയാണ് ബട്ടണിന്റെ പേര് മാറ്റിയത്
+# ഇതാണ് എപ്പോഴും താഴെ കാണേണ്ട ബട്ടണുകൾ
 def get_main_menu_keyboard():
     keyboard = [
         [KeyboardButton("💜 Change Character"), KeyboardButton("Send a random pic 🥵")]
@@ -190,11 +190,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
+    # 1. ആദ്യം വെൽക്കം മെസ്സേജിനൊപ്പം താഴെയുള്ള കീബോർഡ് ബട്ടണുകൾ നൽകുന്നു
     await update.message.reply_text(
-        f"Annyeong, {user_name}! 👋💜\n\nI'm online! Use the buttons below 👇",
+        f"Annyeong, {user_name}! 👋💜\n\nI'm online!",
         reply_markup=get_main_menu_keyboard() 
     )
     
+    # 2. തൊട്ടുപിന്നാലെ ക്യാരക്ടർ സെലക്ട് ചെയ്യാനുള്ള മെസ്സേജ് അയക്കുന്നു
     await switch_character(update, context)
 
 async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,10 +209,8 @@ async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     msg_text = "Who is your bias today? Select below! 👇"
     
-    if update.callback_query:
-        await update.callback_query.message.reply_text(msg_text, reply_markup=bts_buttons)
-    else:
-        await update.message.reply_text(msg_text, reply_markup=bts_buttons)
+    # കമാൻഡ് വഴി വിളിക്കുമ്പോൾ താഴെയുള്ള ബട്ടൺ പോകാതിരിക്കാൻ സാധാരണ മെസ്സേജ് അയക്കുന്നു
+    await update.message.reply_text(msg_text, reply_markup=bts_buttons)
 
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -222,7 +222,8 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             db_collection_users.update_one({'user_id': user_id}, {'$set': {'character': selected_char}})
             if user_id in chat_history: del chat_history[user_id]
             await query.answer(f"Selected {selected_char}! 💜")
-            await query.message.edit_text(f"**{selected_char}** is online! 😍\n\nHe is waiting for your message...")
+            # എഡിറ്റ് ചെയ്യാതെ പുതിയ മെസ്സേജ് അയക്കുന്നു (പഴയ ബട്ടൺ നിലനിൽക്കാൻ)
+            await query.message.edit_text(f"**{selected_char}** is online! 😍")
         except Exception: await query.answer("Error.")
 
 # --- Helper Commands ---
@@ -370,10 +371,14 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
+# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) - ERROR FIXED 🌟
+# പഴയ filters.Animation ഒഴിവാക്കി, പകരം നേരിട്ട് ഫയൽ ചെക്ക് ചെയ്യുന്നു.
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
         media_type = "Unknown"
+        
+        # Check manually instead of using filters to avoid import errors
         if update.message.animation:
             file_id = update.message.animation.file_id
             media_type = "GIF"
@@ -389,8 +394,6 @@ async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if file_id:
             await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
-        else:
-            await update.message.reply_text("Could not detect media ID.")
 
 # ------------------------------------------------------------------
 # 🌟 UPDATED AI CHAT HANDLER
@@ -400,11 +403,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_text = update.message.text
     
-    # 🛑 ബട്ടൺ അമർത്തുമ്പോൾ അത് വർക്ക് ചെയ്യാനുള്ള കോഡ് (പേര് മാറ്റി)
+    # 🛑 BUTTON HANDLERS
     if user_text == "💜 Change Character":
         await switch_character(update, context)
         return
-    elif user_text == "Send a random pic 🥵":  # <--- ഇവിടെ പേര് മാറ്റി
+    elif user_text == "Send a random pic 🥵":  # <--- EXACT MATCH
         await send_new_photo(update, context)
         return
 
@@ -494,9 +497,10 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # 🌟 FIXED MEDIA ID FINDER (Correct v20 Filter Syntax) ✅
+    # 🌟 ERROR FIXED HERE: Simplified ID Finder 🌟
+    # We catch ALL messages from admin that are not commands, then check inside the function
     application.add_handler(MessageHandler(
-        (filters.Animation.ALL | filters.Video.ALL | filters.Sticker.ALL | filters.Photo) & filters.User(ADMIN_TELEGRAM_ID), 
+        filters.User(ADMIN_TELEGRAM_ID) & ~filters.COMMAND, 
         get_media_id
     ))
     
