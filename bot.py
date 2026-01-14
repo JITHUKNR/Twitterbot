@@ -303,7 +303,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Media error: {e}")
 
-# ... (Cleanup functions same as before) ...
+# ... (Cleanup functions) ...
 async def run_hourly_cleanup(application: Application):
     await asyncio.sleep(300) 
     while True:
@@ -456,16 +456,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Groq Error: {e}")
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
+# 🌟 NEW FIX FOR RENDER: Use post_init 🌟
+async def post_init(application: Application):
+    if ADMIN_TELEGRAM_ID: 
+        logger.info("Scheduling hourly media cleanup task.")
+        application.create_task(run_hourly_cleanup(application))
+
 def main():
     if not all([TOKEN, WEBHOOK_URL, GROQ_API_KEY]):
         logger.error("Env vars missing.")
         return
 
-    application = Application.builder().token(TOKEN).build()
+    # 🌟 post_init is hooked here 🌟
+    application = Application.builder().token(TOKEN).post_init(post_init).build()
     
-    if ADMIN_TELEGRAM_ID: 
-        application.create_task(run_hourly_cleanup(application))
-
     # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
