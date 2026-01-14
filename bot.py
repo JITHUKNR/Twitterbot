@@ -4,7 +4,7 @@ import asyncio
 import random
 import requests 
 from groq import Groq
-from telegram import Update, BotCommand 
+from telegram import Update, BotCommand, ReplyKeyboardMarkup, KeyboardButton 
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
@@ -42,9 +42,9 @@ PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 MONGO_URI = os.environ.get('MONGO_URI') 
 
-# ✅✅✅ YOUR ID IS SET HERE ✅✅✅
+# ✅✅✅ YOUR ID ✅✅✅
 ADMIN_TELEGRAM_ID = 7567364364 
-# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+# ✅✅✅✅✅✅✅✅✅✅
 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 
@@ -63,7 +63,7 @@ GIFS = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS 💜
+# 💜 BTS CHARACTER PERSONAS
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
@@ -165,6 +165,14 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
             await collect_media(update, context) 
     except Exception: pass
 
+# 🌟 MAIN MENU BUTTONS (PERSISTENT KEYBOARD) 🌟
+# ഇവിടെയാണ് ബട്ടണിന്റെ പേര് മാറ്റിയത്
+def get_main_menu_keyboard():
+    keyboard = [
+        [KeyboardButton("💜 Change Character"), KeyboardButton("Send a random pic 🥵")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+
 # --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -181,20 +189,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
     if user_id in chat_history: del chat_history[user_id]
-        
-    bts_buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🐨 RM", callback_data="set_RM"), InlineKeyboardButton("🐹 Jin", callback_data="set_Jin")],
-        [InlineKeyboardButton("🐱 Suga", callback_data="set_Suga"), InlineKeyboardButton("🐿️ J-Hope", callback_data="set_J-Hope")],
-        [InlineKeyboardButton("🐥 Jimin", callback_data="set_Jimin"), InlineKeyboardButton("🐯 V", callback_data="set_V")],
-        [InlineKeyboardButton("🐰 Jungkook", callback_data="set_Jungkook")]
-    ])
-
+    
     await update.message.reply_text(
-        f"Annyeong, {user_name}! 👋💜\n\nWho is your bias today? Select below! 👇",
-        reply_markup=bts_buttons
+        f"Annyeong, {user_name}! 👋💜\n\nI'm online! Use the buttons below 👇",
+        reply_markup=get_main_menu_keyboard() 
     )
+    
+    await switch_character(update, context)
 
-# 🌟 SWITCH / CHARACTER COMMAND 🌟
 async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bts_buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("🐨 RM", callback_data="set_RM"), InlineKeyboardButton("🐹 Jin", callback_data="set_Jin")],
@@ -202,10 +204,13 @@ async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🐥 Jimin", callback_data="set_Jimin"), InlineKeyboardButton("🐯 V", callback_data="set_V")],
         [InlineKeyboardButton("🐰 Jungkook", callback_data="set_Jungkook")]
     ])
-    await update.message.reply_text(
-        "Want to change your bias? No problem! 😍\nSelect who you want to talk to now:",
-        reply_markup=bts_buttons
-    )
+    
+    msg_text = "Who is your bias today? Select below! 👇"
+    
+    if update.callback_query:
+        await update.callback_query.message.reply_text(msg_text, reply_markup=bts_buttons)
+    else:
+        await update.message.reply_text(msg_text, reply_markup=bts_buttons)
 
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -365,7 +370,6 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
@@ -396,6 +400,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_text = update.message.text
     
+    # 🛑 ബട്ടൺ അമർത്തുമ്പോൾ അത് വർക്ക് ചെയ്യാനുള്ള കോഡ് (പേര് മാറ്റി)
+    if user_text == "💜 Change Character":
+        await switch_character(update, context)
+        return
+    elif user_text == "Send a random pic 🥵":  # <--- ഇവിടെ പേര് മാറ്റി
+        await send_new_photo(update, context)
+        return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     selected_char = "TaeKook" 
@@ -445,12 +457,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Groq Error: {e}")
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
-# 🌟 MENU BUTTON CONFIGURATION 🌟
 async def post_init(application: Application):
     # Set up the Menu Button Commands
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
-        BotCommand("character", "Change Character/Bias 💜"), # <--- Menu Button
+        BotCommand("character", "Change Bias 💜"),
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
@@ -478,19 +489,18 @@ def main():
     application.add_handler(CommandHandler("stopmedia", stop_media))
     application.add_handler(CommandHandler("allowmedia", allow_media))
     
-    # 🌟 CHARACTER COMMAND (MENU) 🌟
     application.add_handler(CommandHandler("character", switch_character))
     application.add_handler(CommandHandler("switch", switch_character)) 
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # 🌟 FIXED MEDIA ID FINDER (Correct v20 Filter Syntax) 🌟
+    # 🌟 FIXED MEDIA ID FINDER (Correct v20 Filter Syntax) ✅
     application.add_handler(MessageHandler(
         (filters.Animation.ALL | filters.Video.ALL | filters.Sticker.ALL | filters.Photo) & filters.User(ADMIN_TELEGRAM_ID), 
         get_media_id
     ))
     
-    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
+    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.Photo), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
     logger.info(f"Starting webhook on port {PORT}")
