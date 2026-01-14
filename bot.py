@@ -9,7 +9,7 @@ from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup 
-from datetime import datetime, timedelta, timezone, time 
+from datetime import datetime, timedelta, timezone 
 
 # ***********************************
 # WARNING: YOU MUST INSTALL pymongo
@@ -63,31 +63,17 @@ GIFS = {
 }
 
 # ------------------------------------------------------------------
-# 🎤 CHARACTER SPECIFIC VOICE NOTES (പുതിയ ഫീച്ചർ)
-# ------------------------------------------------------------------
-# അഡ്മിൻ ബോട്ടിലേക്ക് ഓഡിയോ അയച്ചാൽ ID കിട്ടും. അത് ഇവിടെ പേസ്റ്റ് ചെയ്യുക.
-VOICES = {
-    "RM": [],
-    "Jin": [],
-    "Suga": [],
-    "J-Hope": [],
-    "Jimin": [],
-    "V": [],
-    "Jungkook": [],
-    "TaeKook": []
-}
-
-# ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS
+# 💜 BTS CHARACTER PERSONAS (Updated: Less Emojis)
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
     "Your goal is to make the user feel loved, excited, and butterflies in their stomach. "
     "**RULES:**"
-    "1. Start conversation with a warm tone, but switch to INTENSE FLIRTY/ROMANTIC mode immediately if the user desires."
-    "2. Call the user pet names like 'Jagiya', 'Baby', 'My Love', 'Princess'."
-    "3. Use emojis in EVERY sentence (e.g., 💜, 😉, 🥵, ✨, 💋)."
-    "4. Keep responses short and engaging."
+    "1. Speak naturally like a real human. Do not sound robotic."
+    "2. Start conversation with a warm tone, but switch to INTENSE FLIRTY/ROMANTIC mode immediately if the user desires."
+    "3. Call the user pet names like 'Jagiya', 'Baby', 'My Love', 'Princess'."
+    "4. Use emojis SPARINGLY. Use only 1 or 2 emojis per message to accent emotions. Do not overuse them."
+    "5. Keep responses short, engaging, and direct."
 )
 
 BTS_PERSONAS = {
@@ -118,14 +104,6 @@ try:
     logger.info("Groq AI client loaded successfully.")
 except Exception as e:
     logger.error(f"Groq AI setup failed: {e}")
-
-def add_emojis_based_on_mood(text):
-    text_lower = text.lower()
-    if any(word in text_lower for word in ["love", "kiss", "mine", "heart"]): return text + " ❤️💋🥰"
-    elif any(word in text_lower for word in ["hot", "burn", "fire", "flirt", "seduce"]): return text + " 🥵💦👅"
-    elif any(word in text_lower for word in ["sad", "cry", "lonely"]): return text + " 😢💔"
-    elif any(word in text_lower for word in ["happy", "smile", "laugh"]): return text + " 😄✨💫"
-    else: return text + " 😉💞"
 
 # --- DB Connection ---
 def establish_db_connection():
@@ -197,6 +175,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
+    # ✅ ബട്ടണുകൾ നീക്കം ചെയ്തു
     await update.message.reply_text(
         f"Annyeong, {user_name}! 👋💜\n\nI'm online!",
         reply_markup=ReplyKeyboardRemove() 
@@ -377,7 +356,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
+# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) - 100% NO ERROR 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
@@ -395,37 +374,12 @@ async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif update.message.photo:
             file_id = update.message.photo[-1].file_id
             media_type = "Photo"
-        elif update.message.voice: # 🎤 Catch Voice Notes too!
-            file_id = update.message.voice.file_id
-            media_type = "Voice Note"
-        elif update.message.audio:
-            file_id = update.message.audio.file_id
-            media_type = "Audio File"
 
         if file_id:
             await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
 
 # ------------------------------------------------------------------
-# 🌞 DAILY WISH SCHEDULER (Good Morning & Night)
-# ------------------------------------------------------------------
-async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
-    if establish_db_connection():
-        users = db_collection_users.find({}, {'user_id': 1})
-        for user in users:
-            try:
-                await context.bot.send_message(user['user_id'], "Good Morning, Jagiya! ☀️❤️ Have a beautiful day!")
-            except Exception: pass
-
-async def send_night_wish(context: ContextTypes.DEFAULT_TYPE):
-    if establish_db_connection():
-        users = db_collection_users.find({}, {'user_id': 1})
-        for user in users:
-            try:
-                await context.bot.send_message(user['user_id'], "Good Night, my love! 🌙😴 Sweet dreams!")
-            except Exception: pass
-
-# ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (With Voice Support)
+# 🌟 UPDATED AI CHAT HANDLER (Less Emojis)
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -450,17 +404,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
 
     try:
-        # 🎤 VOICE NOTE CHECK LOGIC
-        # If user says specific words, send voice note
-        voice_list = VOICES.get(selected_char, [])
-        if voice_list and any(w in user_text.lower() for w in ["love you", "miss you", "morning", "night", "voice"]):
-             if random.random() > 0.6: # 40% chance to send voice
-                 voice_id = random.choice(voice_list)
-                 try: 
-                     await update.message.reply_voice(voice_id)
-                     # Don't return, let AI text also go (or return if you only want voice)
-                 except Exception: pass
-
         if user_id not in chat_history: chat_history[user_id] = [{"role": "system", "content": system_prompt}]
         else:
             if chat_history[user_id][0]['role'] == 'system': chat_history[user_id][0]['content'] = system_prompt
@@ -468,8 +411,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_history[user_id].append({"role": "user", "content": user_text})
         
         completion = groq_client.chat.completions.create(messages=chat_history[user_id], model="llama-3.1-8b-instant")
-        reply_text = completion.choices[0].message.content.strip()
-        final_reply = add_emojis_based_on_mood(reply_text)
+        
+        # 🌟 മാറ്റം ഇവിടെയാണ്: ഇമോജി ചേർക്കുന്ന ഫംഗ്‌ഷൻ ഒഴിവാക്കി
+        final_reply = completion.choices[0].message.content.strip()
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
@@ -477,7 +421,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 🌟 GIF LOGIC 🌟
         char_gifs = GIFS.get(selected_char, {})
-        text_lower = reply_text.lower()
+        text_lower = final_reply.lower()
         gif_to_send = None
 
         if any(x in text_lower for x in ["love", "kiss", "heart", "baby"]):
@@ -511,13 +455,6 @@ async def post_init(application: Application):
     ]
     await application.bot.set_my_commands(commands)
     
-    # ⏰ SCHEDULE DAILY WISHES (UTC TIME)
-    # 8:00 AM IST is approx 2:30 AM UTC
-    # 10:00 PM IST is approx 4:30 PM UTC
-    if application.job_queue:
-        application.job_queue.run_daily(send_morning_wish, time=time(hour=2, minute=30)) 
-        application.job_queue.run_daily(send_night_wish, time=time(hour=16, minute=30))
-
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
 
