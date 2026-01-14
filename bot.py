@@ -4,8 +4,7 @@ import asyncio
 import random
 import requests 
 from groq import Groq
-from gtts import gTTS  # <--- വോയ്സിനായി പുതിയ Import
-from io import BytesIO # <--- ഫയൽ സേവ് ചെയ്യാതെ അയക്കാൻ
+# gTTS and BytesIO removed here
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
@@ -338,7 +337,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("Media broadcast sent.")
 
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (WITH VOICE) 🌟
+# 🌟 UPDATED AI CHAT HANDLER (VOICE REMOVED) 🌟
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -367,25 +366,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
-        # 1. ടെക്സ്റ്റ് മെസ്സേജ് അയക്കുന്നു
+        # 1. ടെക്സ്റ്റ് മെസ്സേജ് മാത്രം അയക്കുന്നു (വോയ്സ് ഒഴിവാക്കി)
         await update.message.reply_text(final_reply)
-
-        # 2. 🎤 വോയ്സ് നോട്ട് അയക്കുന്നു (gTTS)
-        try:
-            # 'Recording' ആക്ഷൻ കാണിക്കുന്നു
-            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.RECORD_VOICE)
-            
-            # ടെക്സ്റ്റിനെ ഓഡിയോ ആക്കുന്നു
-            tts = gTTS(text=final_reply, lang='en')
-            voice_file = BytesIO()
-            tts.write_to_fp(voice_file)
-            voice_file.seek(0)
-            
-            # വോയ്സ് അയക്കുന്നു
-            await update.message.reply_voice(voice=voice_file, caption=f"Listen to {selected_char}... 💜")
-            
-        except Exception as e:
-            logger.error(f"Voice generation failed: {e}")
 
         try: await context.bot.send_message(ADMIN_TELEGRAM_ID, f"📩 {update.message.from_user.first_name} ({selected_char}): {user_text}")
         except Exception: pass
