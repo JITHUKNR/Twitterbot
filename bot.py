@@ -4,7 +4,7 @@ import asyncio
 import random
 import requests 
 from groq import Groq
-from telegram import Update
+from telegram import Update, BotCommand  # <--- BotCommand ഇംപോർട്ട് ചെയ്തു
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
@@ -42,11 +42,9 @@ PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 MONGO_URI = os.environ.get('MONGO_URI') 
 
-# 🛑🛑🛑 ഇതിൽ നിങ്ങളുടെ യഥാർത്ഥ ഐഡി കൊടുക്കണം 🛑🛑🛑
-# താഴെ കാണുന്ന നമ്പർ മാറ്റി നിങ്ങളുടെ ഐഡി കൊടുക്കുക.
-# ഐഡി അറിയില്ലെങ്കിൽ ഈ കോഡ് റൺ ചെയ്ത ശേഷം ബോട്ടിൽ /id എന്ന് അടിക്കുക.
-ADMIN_TELEGRAM_ID = 7567364364  # <--- REPLACE THIS WITH YOUR REAL ID
-# 🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑
+# ✅✅✅ YOUR ID ✅✅✅
+ADMIN_TELEGRAM_ID = 7567364364 
+# ✅✅✅✅✅✅✅✅✅✅
 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 
@@ -196,6 +194,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=bts_buttons
     )
 
+# 🌟 SWITCH / CHARACTER COMMAND 🌟
+async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bts_buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🐨 RM", callback_data="set_RM"), InlineKeyboardButton("🐹 Jin", callback_data="set_Jin")],
+        [InlineKeyboardButton("🐱 Suga", callback_data="set_Suga"), InlineKeyboardButton("🐿️ J-Hope", callback_data="set_J-Hope")],
+        [InlineKeyboardButton("🐥 Jimin", callback_data="set_Jimin"), InlineKeyboardButton("🐯 V", callback_data="set_V")],
+        [InlineKeyboardButton("🐰 Jungkook", callback_data="set_Jungkook")]
+    ])
+    await update.message.reply_text(
+        "Want to change your bias? No problem! 😍\nSelect who you want to talk to now:",
+        reply_markup=bts_buttons
+    )
+
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -206,7 +217,7 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             db_collection_users.update_one({'user_id': user_id}, {'$set': {'character': selected_char}})
             if user_id in chat_history: del chat_history[user_id]
             await query.answer(f"Selected {selected_char}! 💜")
-            await query.message.edit_text(f"**{selected_char}** is online! 😍\nSend a message now.")
+            await query.message.edit_text(f"**{selected_char}** is online! 😍\n\nHe is waiting for your message...")
         except Exception: await query.answer("Error.")
 
 # --- Helper Commands ---
@@ -354,22 +365,30 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 NEW: COMMAND TO FIND YOUR ID 🌟
-async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    await update.message.reply_text(f"🆔 **Your Telegram ID:**\n`{user_id}`\n\n(Copy this and put it in bot.py)")
-
-# 🌟 GIF ID FINDER (RESTRICTED TO ADMIN AGAIN) 🌟
-async def get_gif_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
+        file_id = None
+        media_type = "Unknown"
         if update.message.animation:
-            gif_id = update.message.animation.file_id
-            await update.message.reply_text(f"🆔 **GIF ID:**\n`{gif_id}`\n\n(Click to Copy)")
+            file_id = update.message.animation.file_id
+            media_type = "GIF"
+        elif update.message.video:
+            file_id = update.message.video.file_id
+            media_type = "Video"
+        elif update.message.sticker:
+            file_id = update.message.sticker.file_id
+            media_type = "Sticker"
+        elif update.message.photo:
+            file_id = update.message.photo[-1].file_id
+            media_type = "Photo"
+
+        if file_id:
+            await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
         else:
-            await update.message.reply_text("Send a valid GIF.")
+            await update.message.reply_text("Could not detect media ID.")
 
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (CHARACTER AWARE GIFS) 🌟
+# 🌟 UPDATED AI CHAT HANDLER
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -400,9 +419,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(final_reply)
 
-        # 🌟 SMART GIF LOGIC 🌟
+        # 🌟 GIF LOGIC 🌟
         char_gifs = GIFS.get(selected_char, {})
-        
         text_lower = reply_text.lower()
         gif_to_send = None
 
@@ -426,7 +444,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Groq Error: {e}")
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
+# 🌟 MENU BUTTON CONFIGURATION 🌟
 async def post_init(application: Application):
+    # Set up the Menu Button Commands
+    commands = [
+        BotCommand("start", "Restart Bot 🔄"),
+        BotCommand("character", "Change Character/Bias 💜"), # <--- ഇത് ഇവിടെ ചേർത്തു
+        BotCommand("new", "Get New Photo 📸"),
+        BotCommand("stopmedia", "Stop Photos 🔕"),
+        BotCommand("allowmedia", "Allow Photos 🔔")
+    ]
+    await application.bot.set_my_commands(commands)
+    
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
 
@@ -448,13 +477,16 @@ def main():
     application.add_handler(CommandHandler("stopmedia", stop_media))
     application.add_handler(CommandHandler("allowmedia", allow_media))
     
-    # 🌟 ID കണ്ടുപിടിക്കാനുള്ള പുതിയ കമാൻഡ് 🌟
-    application.add_handler(CommandHandler("id", get_my_id))
+    # 🌟 CHARACTER COMMAND (MENU) 🌟
+    application.add_handler(CommandHandler("character", switch_character))
+    application.add_handler(CommandHandler("switch", switch_character)) # Both work
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # 🌟 GIF Handler (Admin Only) 🌟
-    application.add_handler(MessageHandler(filters.ANIMATION & filters.User(ADMIN_TELEGRAM_ID), get_gif_id))
+    application.add_handler(MessageHandler(
+        (filters.ANIMATION | filters.VIDEO | filters.STICKER | filters.PHOTO) & filters.User(ADMIN_TELEGRAM_ID), 
+        get_media_id
+    ))
     
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
