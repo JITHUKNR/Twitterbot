@@ -4,6 +4,8 @@ import asyncio
 import random
 import requests 
 from groq import Groq
+from gtts import gTTS  # <--- വോയ്സിനായി പുതിയ Import
+from io import BytesIO # <--- ഫയൽ സേവ് ചെയ്യാതെ അയക്കാൻ
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
@@ -18,32 +20,21 @@ try:
     from pymongo import MongoClient
     from pymongo.errors import ConnectionFailure, OperationFailure
 except ImportError:
-    # If pymongo is not installed, we use a mock class to prevent errors
     class MockClient:
-        def __init__(self, *args, **kwargs):
-            pass
-        def admin(self):
-            return self
-        def command(self, *args, **kwargs):
-            raise ConnectionFailure("pymongo not imported.")
+        def __init__(self, *args, **kwargs): pass
+        def admin(self): return self
+        def command(self, *args, **kwargs): raise ConnectionFailure("pymongo not imported.")
     MongoClient = MockClient
     ConnectionFailure = Exception
     OperationFailure = Exception
-    logger.error("pymongo library not found. Please update requirements.txt")
-
+    logger.error("pymongo library not found.")
 
 # -------------------- കൂൾഡൗൺ സമയം --------------------
-COOLDOWN_TIME_SECONDS = 180 # 3 മിനിറ്റ്
-# --------------------------------------------------------
-
-# 🌟 മീഡിയയുടെ ആയുസ്സ് 1 മണിക്കൂർ 🌟
+COOLDOWN_TIME_SECONDS = 180 
 MEDIA_LIFETIME_HOURS = 1 
 # --------------------------------------------------------
 
-# ലോഗിംഗ് സെറ്റപ്പ്
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Environment Variables ---
@@ -52,15 +43,12 @@ WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 MONGO_URI = os.environ.get('MONGO_URI') 
-# ------------------------------------
 
-# --- അഡ്മിൻ ID-കളും ചാനൽ ID-യും ---
 ADMIN_TELEGRAM_ID = 7567364364 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
-# ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (SYSTEM PROMPTS) 💜
+# 💜 BTS CHARACTER PERSONAS 💜
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
@@ -80,11 +68,10 @@ BTS_PERSONAS = {
     "Jimin": BASE_INSTRUCTION + " You are **Jimin**. You are the 'Mochi', incredibly flirty, cute, and affectionate. You love being clingy and sweet.",
     "V": BASE_INSTRUCTION + " You are **V (Taehyung)**. You are unique, deep-voiced, mysterious, and artistic. You are a 'Good Boy' but can be very seductive.",
     "Jungkook": BASE_INSTRUCTION + " You are **Jungkook**. You are the 'Golden Maknae', competitive, strong, and a bit shy but very passionate and possessive in romance.",
-    "TaeKook": BASE_INSTRUCTION + " You are **TaeKook**. A mix of V and Jungkook. Playful and intense." # Default
+    "TaeKook": BASE_INSTRUCTION + " You are **TaeKook**. A mix of V and Jungkook. Playful and intense." 
 }
-# ------------------------------------------------------------------
 
-# --- MongoDB സെറ്റപ്പ് ---
+# --- DB Setup ---
 db_client = None
 db_collection_users = None
 db_collection_media = None
@@ -92,30 +79,23 @@ db_collection_sent = None
 db_collection_cooldown = None
 DB_NAME = "Taekook_bot" 
 
-# --- Groq AI ക്ലയന്റ് ---
+# --- Groq AI ---
 groq_client = None
 try:
-    if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY is not set.")
+    if not GROQ_API_KEY: raise ValueError("GROQ_API_KEY is not set.")
     groq_client = Groq(api_key=GROQ_API_KEY)
     chat_history = {} 
     logger.info("Groq AI client loaded successfully.")
 except Exception as e:
     logger.error(f"Groq AI setup failed: {e}")
 
-# 💦 Mood-based emoji generator 
 def add_emojis_based_on_mood(text):
     text_lower = text.lower()
-    if any(word in text_lower for word in ["love", "kiss", "mine", "heart"]):
-        return text + " ❤️💋🥰"
-    elif any(word in text_lower for word in ["hot", "burn", "fire", "flirt", "seduce"]):
-        return text + " 🥵💦👅"
-    elif any(word in text_lower for word in ["sad", "cry", "lonely"]):
-        return text + " 😢💔"
-    elif any(word in text_lower for word in ["happy", "smile", "laugh"]):
-        return text + " 😄✨💫"
-    else:
-        return text + " 😉💞"
+    if any(word in text_lower for word in ["love", "kiss", "mine", "heart"]): return text + " ❤️💋🥰"
+    elif any(word in text_lower for word in ["hot", "burn", "fire", "flirt", "seduce"]): return text + " 🥵💦👅"
+    elif any(word in text_lower for word in ["sad", "cry", "lonely"]): return text + " 😢💔"
+    elif any(word in text_lower for word in ["happy", "smile", "laugh"]): return text + " 😄✨💫"
+    else: return text + " 😉💞"
 
 # --- DB Connection ---
 def establish_db_connection():
@@ -124,12 +104,9 @@ def establish_db_connection():
         try:
             db_client.admin.command('ping') 
             return True
-        except ConnectionFailure:
-            db_client = None
-
+        except ConnectionFailure: db_client = None
     try:
-        if not MONGO_URI: 
-            return False
+        if not MONGO_URI: return False
         db_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
         db_client.admin.command('ping')
         db = db_client[DB_NAME]
@@ -165,39 +142,31 @@ async def collect_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {'$set': {'file_type': file_type, 'file_id': file_id}},
                 upsert=True
             )
-        except Exception:
-            pass
+        except Exception: pass
 
 async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if update.channel_post and update.channel_post.chat_id == int(ADMIN_CHANNEL_ID):
             await collect_media(update, context) 
-    except Exception:
-        pass
+    except Exception: pass
 
-# ------------------------------------------------------------------
-# 🌟 NEW START COMMAND WITH BTS BUTTONS 🌟
-# ------------------------------------------------------------------
+# --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
     
     if establish_db_connection():
         try:
-            # Default character is TaeKook if not set
             db_collection_users.update_one(
                 {'user_id': user_id},
                 {'$set': {'first_name': user_name, 'joined_at': datetime.now(timezone.utc)},
                  '$setOnInsert': {'allow_media': True, 'character': 'TaeKook'}},
                 upsert=True
             )
-        except Exception:
-            pass
+        except Exception: pass
 
-    if user_id in chat_history:
-        del chat_history[user_id]
+    if user_id in chat_history: del chat_history[user_id]
         
-    # BTS Selection Buttons
     bts_buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("🐨 RM", callback_data="set_RM"), InlineKeyboardButton("🐹 Jin", callback_data="set_Jin")],
         [InlineKeyboardButton("🐱 Suga", callback_data="set_Suga"), InlineKeyboardButton("🐿️ J-Hope", callback_data="set_J-Hope")],
@@ -206,55 +175,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     await update.message.reply_text(
-        f"Annyeong, {user_name}! 👋💜\n\n"
-        "Welcome to **Chai**. Who is your bias? Who do you want to talk to today?\n"
-        "Select your favorite member below! 👇",
+        f"Annyeong, {user_name}! 👋💜\n\nWho is your bias today? Select below! 👇",
         reply_markup=bts_buttons
     )
 
-# ------------------------------------------------------------------
-# 🌟 CHARACTER SELECTION HANDLER 🌟
-# ------------------------------------------------------------------
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    
-    # Extract character name from callback data (e.g., "set_RM" -> "RM")
     selected_char = query.data.split("_")[1]
     
     if establish_db_connection():
         try:
-            # Update user's character preference in DB
-            db_collection_users.update_one(
-                {'user_id': user_id},
-                {'$set': {'character': selected_char}}
-            )
-            
-            # Reset chat history so the new character starts fresh
-            if user_id in chat_history:
-                del chat_history[user_id]
+            db_collection_users.update_one({'user_id': user_id}, {'$set': {'character': selected_char}})
+            if user_id in chat_history: del chat_history[user_id]
+            await query.answer(f"Selected {selected_char}! 💜")
+            await query.message.edit_text(f"**{selected_char}** is online! 😍\nSend a message now.")
+        except Exception: await query.answer("Error.")
 
-            await query.answer(f"You selected {selected_char}! 💜")
-            await query.message.edit_text(
-                f"**{selected_char}** is here for you now! 😍\n\n"
-                f"Send a message to start chatting with him.",
-            )
-        except Exception as e:
-            await query.answer("Error setting character.")
-            logger.error(f"Char set error: {e}")
-
-# ... (Media Control Commands are same as before) ...
+# --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if establish_db_connection():
         db_collection_users.update_one({'user_id': user_id}, {'$set': {'allow_media': False}})
-        await update.message.reply_text("Stopped sending photos. Use /allowmedia to enable again.")
+        await update.message.reply_text("Stopped sending photos.")
 
 async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if establish_db_connection():
         db_collection_users.update_one({'user_id': user_id}, {'$set': {'allow_media': True}})
-        await update.message.reply_text("Media enabled! Try /new. 🥵")
+        await update.message.reply_text("Media enabled! 🥵")
 
 async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_TELEGRAM_ID: return
@@ -270,22 +219,18 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection():
         await message_obj.reply_text("DB Error.")
         return
-        
-    # Check permission
     user_doc = db_collection_users.find_one({'user_id': user_id})
     if user_doc and user_doc.get('allow_media') is False:
-        await message_obj.reply_text("Media is disabled. Use /allowmedia.")
+        await message_obj.reply_text("Media disabled.")
         return
-
-    # Check Cooldown
     cooldown_doc = db_collection_cooldown.find_one({'user_id': user_id})
     if cooldown_doc:
         elapsed = current_time - cooldown_doc['last_command_time'].replace(tzinfo=timezone.utc)
         if elapsed.total_seconds() < COOLDOWN_TIME_SECONDS:
-            await message_obj.reply_text("Slow down darling! Wait a bit. 😉")
+            await message_obj.reply_text("Wait a bit, darling. 😉")
             return
 
-    await message_obj.reply_text("Finding a pic... 😉")
+    await message_obj.reply_text("Searching... 😉")
     try:
         random_media = db_collection_media.aggregate([{'$sample': {'size': 1}}])
         result = next(random_media, None)
@@ -295,15 +240,11 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg = await message_obj.reply_photo(result['file_id'], caption=caption, has_spoiler=True, protect_content=True)
             else:
                 msg = await message_obj.reply_video(result['file_id'], caption=caption, has_spoiler=True, protect_content=True)
-            
             db_collection_cooldown.update_one({'user_id': user_id}, {'$set': {'last_command_time': current_time}}, upsert=True)
             db_collection_sent.insert_one({'chat_id': message_obj.chat_id, 'message_id': msg.message_id, 'sent_at': current_time})
-        else:
-            await message_obj.reply_text("No media found.")
-    except Exception as e:
-        logger.error(f"Media error: {e}")
+        else: await message_obj.reply_text("No media found.")
+    except Exception: await message_obj.reply_text("Error sending media.")
 
-# ... (Cleanup functions) ...
 async def run_hourly_cleanup(application: Application):
     await asyncio.sleep(300) 
     while True:
@@ -313,8 +254,7 @@ async def run_hourly_cleanup(application: Application):
         try:
             msgs = list(db_collection_sent.find({'sent_at': {'$lt': time_limit}}))
             for doc in msgs:
-                try:
-                    await application.bot.delete_message(chat_id=doc['chat_id'], message_id=doc['message_id'])
+                try: await application.bot.delete_message(chat_id=doc['chat_id'], message_id=doc['message_id'])
                 except Exception: pass
                 db_collection_sent.delete_one({'_id': doc['_id']})
         except Exception: pass
@@ -325,33 +265,29 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     time_limit = datetime.now(timezone.utc) - timedelta(hours=MEDIA_LIFETIME_HOURS)
     msgs = list(db_collection_sent.find({'sent_at': {'$lt': time_limit}}))
     for doc in msgs:
-        try:
-            await context.bot.delete_message(chat_id=doc['chat_id'], message_id=doc['message_id'])
+        try: await context.bot.delete_message(chat_id=doc['chat_id'], message_id=doc['message_id'])
         except Exception: pass
         db_collection_sent.delete_one({'_id': doc['_id']})
-    await update.effective_message.reply_text(f"Deleted {len(msgs)} old messages.")
+    await update.effective_message.reply_text(f"Deleted {len(msgs)} messages.")
 
 async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
-    await update.effective_message.reply_text("Checking media validity...")
+    await update.effective_message.reply_text("Cleaning up...")
     if not establish_db_connection(): return
     all_media = list(db_collection_media.find({}))
     deleted = 0
     for doc in all_media:
         try:
-            if doc['file_type'] == 'photo':
-                msg = await context.bot.send_photo(ADMIN_TELEGRAM_ID, doc['file_id'], disable_notification=True)
-            else:
-                msg = await context.bot.send_video(ADMIN_TELEGRAM_ID, doc['file_id'], disable_notification=True)
+            if doc['file_type'] == 'photo': msg = await context.bot.send_photo(ADMIN_TELEGRAM_ID, doc['file_id'], disable_notification=True)
+            else: msg = await context.bot.send_video(ADMIN_TELEGRAM_ID, doc['file_id'], disable_notification=True)
             await context.bot.delete_message(ADMIN_TELEGRAM_ID, msg.message_id)
         except BadRequest:
             db_collection_media.delete_one({'_id': doc['_id']})
             deleted += 1
         except Exception: pass
         await asyncio.sleep(0.1)
-    await update.effective_message.reply_text(f"Cleanup done. Removed {deleted} invalid files.")
+    await update.effective_message.reply_text(f"Removed {deleted} invalid files.")
 
-# --- Admin Menu ---
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_TELEGRAM_ID: return
     keyboard = [
@@ -363,13 +299,9 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    
-    # Check if it's a Character Selection Button
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
         return
-
-    # Check Admin Buttons
     if query.from_user.id != ADMIN_TELEGRAM_ID: return
     await query.answer()
     if query.data == 'admin_users': await user_count(query, context)
@@ -387,7 +319,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for uid in users:
             try: await context.bot.send_message(uid, f"📢 **Chai Update:**\n{msg}")
             except Exception: pass
-        await update.effective_message.reply_text(f"Broadcast sent to {len(users)} users.")
+        await update.effective_message.reply_text(f"Sent to {len(users)} users.")
 
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
@@ -406,49 +338,55 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("Media broadcast sent.")
 
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (CHARACTER AWARE) 🌟
+# 🌟 UPDATED AI CHAT HANDLER (WITH VOICE) 🌟
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
     user_id = update.message.from_user.id
     user_text = update.message.text
     
-    # Typing Action
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
-    # 1. Fetch User's Selected Character from DB
-    selected_char = "TaeKook" # Default
+    selected_char = "TaeKook" 
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
-        if user_doc and 'character' in user_doc:
-            selected_char = user_doc['character']
+        if user_doc and 'character' in user_doc: selected_char = user_doc['character']
     
-    # 2. Get the specific prompt for that character
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
 
     try:
-        # Initialize history if not present
-        if user_id not in chat_history:
-             chat_history[user_id] = [{"role": "system", "content": system_prompt}]
+        if user_id not in chat_history: chat_history[user_id] = [{"role": "system", "content": system_prompt}]
         else:
-            # Update system prompt dynamically (in case they switched characters)
-            if chat_history[user_id][0]['role'] == 'system':
-                chat_history[user_id][0]['content'] = system_prompt
+            if chat_history[user_id][0]['role'] == 'system': chat_history[user_id][0]['content'] = system_prompt
         
         chat_history[user_id].append({"role": "user", "content": user_text})
         
-        # Groq Call
-        completion = groq_client.chat.completions.create(
-            messages=chat_history[user_id],
-            model="llama-3.1-8b-instant",
-        )
+        completion = groq_client.chat.completions.create(messages=chat_history[user_id], model="llama-3.1-8b-instant")
         reply_text = completion.choices[0].message.content.strip()
         final_reply = add_emojis_based_on_mood(reply_text)
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
+        
+        # 1. ടെക്സ്റ്റ് മെസ്സേജ് അയക്കുന്നു
         await update.message.reply_text(final_reply)
 
-        # Admin Log
+        # 2. 🎤 വോയ്സ് നോട്ട് അയക്കുന്നു (gTTS)
+        try:
+            # 'Recording' ആക്ഷൻ കാണിക്കുന്നു
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.RECORD_VOICE)
+            
+            # ടെക്സ്റ്റിനെ ഓഡിയോ ആക്കുന്നു
+            tts = gTTS(text=final_reply, lang='en')
+            voice_file = BytesIO()
+            tts.write_to_fp(voice_file)
+            voice_file.seek(0)
+            
+            # വോയ്സ് അയക്കുന്നു
+            await update.message.reply_voice(voice=voice_file, caption=f"Listen to {selected_char}... 💜")
+            
+        except Exception as e:
+            logger.error(f"Voice generation failed: {e}")
+
         try: await context.bot.send_message(ADMIN_TELEGRAM_ID, f"📩 {update.message.from_user.first_name} ({selected_char}): {user_text}")
         except Exception: pass
         
@@ -456,10 +394,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Groq Error: {e}")
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
-# 🌟 NEW FIX FOR RENDER: Use post_init 🌟
 async def post_init(application: Application):
     if ADMIN_TELEGRAM_ID: 
-        logger.info("Scheduling hourly media cleanup task.")
         application.create_task(run_hourly_cleanup(application))
 
 def main():
@@ -467,10 +403,8 @@ def main():
         logger.error("Env vars missing.")
         return
 
-    # 🌟 post_init is hooked here 🌟
     application = Application.builder().token(TOKEN).post_init(post_init).build()
     
-    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("broadcast", broadcast_message))
