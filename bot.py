@@ -4,7 +4,6 @@ import asyncio
 import random
 import requests 
 from groq import Groq
-# gTTS and BytesIO removed here
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
@@ -45,6 +44,30 @@ MONGO_URI = os.environ.get('MONGO_URI')
 
 ADMIN_TELEGRAM_ID = 7567364364 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
+
+# ------------------------------------------------------------------
+# 🟣 BTS STICKER COLLECTION (ഇവിടെയാണ് സ്റ്റിക്കർ ID ചേർക്കേണ്ടത്)
+# ------------------------------------------------------------------
+# അഡ്മിൻ ബോട്ടിന് സ്റ്റിക്കർ അയച്ചാൽ ID കിട്ടും. അത് ഇവിടെ പേസ്റ്റ് ചെയ്യുക.
+STICKERS = {
+    "love": [
+        "CAACAgUAAxkBAA...", # <--- ഇവിടെ ലവ് സ്റ്റിക്കർ ID ഇടുക
+        "CAACAgUAAxkBAA...",
+    ],
+    "sad": [
+        "CAACAgUAAxkBAA...", # <--- ഇവിടെ സങ്കടം വരുന്ന സ്റ്റിക്കർ ID ഇടുക
+    ],
+    "funny": [
+        "CAACAgUAAxkBAA...", # <--- ഇവിടെ ചിരി വരുന്ന സ്റ്റിക്കർ ID ഇടുക
+    ],
+    "hot": [
+        "CAACAgUAAxkBAA...", # <--- ഇവിടെ ഹോട്ട്/ഫ്ലർട്ടി സ്റ്റിക്കർ ID ഇടുക
+    ],
+    "angry": [
+         "CAACAgUAAxkBAA...", # <--- ഇവിടെ ദേഷ്യം വരുന്ന സ്റ്റിക്കർ ID ഇടുക
+    ]
+}
+# (നിലവിൽ ഇത് വെറുതെ കിടക്കട്ടെ, കോഡ് റൺ ചെയ്ത ശേഷം ഐഡി കണ്ടുപിടിച്ച് മാറ്റാം)
 
 # ------------------------------------------------------------------
 # 💜 BTS CHARACTER PERSONAS 💜
@@ -336,8 +359,14 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
+# 🌟 NEW: STICKER ID FINDER 🌟
+async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id == ADMIN_TELEGRAM_ID:
+        sticker_id = update.message.sticker.file_id
+        await update.message.reply_text(f"🆔 **Sticker ID:**\n`{sticker_id}`\n\n(Click to Copy)")
+
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (VOICE REMOVED) 🌟
+# 🌟 UPDATED AI CHAT HANDLER (WITH STICKER REACTION) 🌟
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -366,8 +395,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
-        # 1. ടെക്സ്റ്റ് മെസ്സേജ് മാത്രം അയക്കുന്നു (വോയ്സ് ഒഴിവാക്കി)
+        # 1. Send Text Reply
         await update.message.reply_text(final_reply)
+
+        # 2. 🌟 Send Sticker Logic 🌟
+        # Check mood keywords to send relevant sticker
+        text_lower = reply_text.lower()
+        sticker_to_send = None
+
+        if any(x in text_lower for x in ["love", "kiss", "heart", "baby"]):
+            sticker_to_send = random.choice(STICKERS.get("love", [])) if STICKERS.get("love") else None
+        elif any(x in text_lower for x in ["sad", "cry", "sorry"]):
+            sticker_to_send = random.choice(STICKERS.get("sad", [])) if STICKERS.get("sad") else None
+        elif any(x in text_lower for x in ["haha", "lol", "funny"]):
+            sticker_to_send = random.choice(STICKERS.get("funny", [])) if STICKERS.get("funny") else None
+        elif any(x in text_lower for x in ["hot", "sexy", "daddy"]):
+            sticker_to_send = random.choice(STICKERS.get("hot", [])) if STICKERS.get("hot") else None
+        
+        # Only send sticker if valid ID is present (not placeholders) and random chance (50%) to avoid spam
+        if sticker_to_send and "CAACAg" in sticker_to_send and random.random() > 0.5:
+             try:
+                 await update.message.reply_sticker(sticker=sticker_to_send)
+             except Exception: pass
 
         try: await context.bot.send_message(ADMIN_TELEGRAM_ID, f"📩 {update.message.from_user.first_name} ({selected_char}): {user_text}")
         except Exception: pass
@@ -399,6 +448,10 @@ def main():
     application.add_handler(CommandHandler("allowmedia", allow_media))
 
     application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # 🌟 Sticker ID Finder Handler Added 🌟
+    application.add_handler(MessageHandler(filters.STICKER & filters.User(ADMIN_TELEGRAM_ID), get_sticker_id))
+    
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
