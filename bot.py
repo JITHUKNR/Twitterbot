@@ -4,7 +4,7 @@ import asyncio
 import random
 import requests 
 from groq import Groq
-from telegram import Update, BotCommand, ReplyKeyboardMarkup, KeyboardButton 
+from telegram import Update, BotCommand, ReplyKeyboardRemove 
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
@@ -52,7 +52,7 @@ ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797')
 # 🟣 CHARACTER SPECIFIC GIFs
 # ------------------------------------------------------------------
 GIFS = {
-    "RM": { "love": [], "sad": [], "funny": [], "hot": [BAACAgQAAxkBAAIcLWlnh_9D2wNy2c_oisOZ4ZEUpb8OAAIZHgAChF04U75gS2qFWppAOAQ] },
+    "RM": { "love": [], "sad": [], "funny": [], "hot": [] },
     "Jin": { "love": [], "sad": [], "funny": [], "hot": [] },
     "Suga": { "love": [], "sad": [], "funny": [], "hot": [] },
     "J-Hope": { "love": [], "sad": [], "funny": [], "hot": [] },
@@ -165,13 +165,6 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
             await collect_media(update, context) 
     except Exception: pass
 
-# 🌟 MAIN MENU BUTTONS (PERSISTENT KEYBOARD) 🌟
-def get_main_menu_keyboard():
-    keyboard = [
-        [KeyboardButton("💜 Change Character"), KeyboardButton("Send a random pic 🥵")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-
 # --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -189,9 +182,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
+    # ✅ ബട്ടണുകൾ നീക്കം ചെയ്തു
     await update.message.reply_text(
-        f"Annyeong, {user_name}! 👋💜\n\nI'm online! Use the buttons below 👇",
-        reply_markup=get_main_menu_keyboard() 
+        f"Annyeong, {user_name}! 👋💜\n\nI'm online!",
+        reply_markup=ReplyKeyboardRemove() 
     )
     
     await switch_character(update, context)
@@ -369,14 +363,12 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) - 100% NO ERROR 🌟
-# "filters.User" മാത്രം ഉപയോഗിക്കുന്നു. ബാക്കി ഉള്ളിൽ ചെക്ക് ചെയ്യുന്നു.
+# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
         media_type = "Unknown"
         
-        # Check manually instead of using filters to avoid import errors
         if update.message.animation:
             file_id = update.message.animation.file_id
             media_type = "GIF"
@@ -401,14 +393,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_text = update.message.text
     
-    # 🛑 BUTTON HANDLERS
-    if user_text == "💜 Change Character":
-        await switch_character(update, context)
-        return
-    elif user_text == "Send a random pic 🥵": 
-        await send_new_photo(update, context)
-        return
-
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     selected_char = "TaeKook" 
@@ -495,8 +479,7 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # ✅ NO MORE ERRORS HERE: Catch EVERYTHING from Admin and check inside
-    # This prevents the 'AttributeError' crash completely
+    # ✅ NO ERRORS HERE: Catch EVERYTHING from Admin and check inside
     application.add_handler(MessageHandler(
         filters.User(ADMIN_TELEGRAM_ID) & ~filters.COMMAND, 
         get_media_id
