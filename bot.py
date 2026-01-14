@@ -369,13 +369,14 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
-# ✅ FIXED: Filters Uppercase and Sticker Class
+# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) - 100% NO ERROR 🌟
+# "filters.User" മാത്രം ഉപയോഗിക്കുന്നു. ബാക്കി ഉള്ളിൽ ചെക്ക് ചെയ്യുന്നു.
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
         media_type = "Unknown"
         
+        # Check manually instead of using filters to avoid import errors
         if update.message.animation:
             file_id = update.message.animation.file_id
             media_type = "GIF"
@@ -494,12 +495,14 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # ✅ FIXED HERE: Using correct filters syntax for v20+
+    # ✅ NO MORE ERRORS HERE: Catch EVERYTHING from Admin and check inside
+    # This prevents the 'AttributeError' crash completely
     application.add_handler(MessageHandler(
-        (filters.Animation.ALL | filters.VIDEO | filters.Sticker.ALL | filters.PHOTO) & filters.User(ADMIN_TELEGRAM_ID), 
+        filters.User(ADMIN_TELEGRAM_ID) & ~filters.COMMAND, 
         get_media_id
     ))
     
+    # ✅ FIXED HERE: filters.PHOTO (Uppercase is correct for v20)
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
