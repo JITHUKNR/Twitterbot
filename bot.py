@@ -9,7 +9,7 @@ from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup 
-from datetime import datetime, timedelta, timezone 
+from datetime import datetime, timedelta, timezone, time 
 
 # ***********************************
 # WARNING: YOU MUST INSTALL pymongo
@@ -60,6 +60,21 @@ GIFS = {
     "V": { "love": [], "sad": [], "funny": [], "hot": [] },
     "Jungkook": { "love": [], "sad": [], "funny": [], "hot": [] },
     "TaeKook": { "love": [], "sad": [], "funny": [], "hot": [] }
+}
+
+# ------------------------------------------------------------------
+# 🎤 CHARACTER SPECIFIC VOICE NOTES (പുതിയ ഫീച്ചർ)
+# ------------------------------------------------------------------
+# അഡ്മിൻ ബോട്ടിലേക്ക് ഓഡിയോ അയച്ചാൽ ID കിട്ടും. അത് ഇവിടെ പേസ്റ്റ് ചെയ്യുക.
+VOICES = {
+    "RM": [],
+    "Jin": [],
+    "Suga": [],
+    "J-Hope": [],
+    "Jimin": [],
+    "V": [],
+    "Jungkook": [],
+    "TaeKook": []
 }
 
 # ------------------------------------------------------------------
@@ -182,7 +197,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
-    # ✅ ബട്ടണുകൾ നീക്കം ചെയ്തു
     await update.message.reply_text(
         f"Annyeong, {user_name}! 👋💜\n\nI'm online!",
         reply_markup=ReplyKeyboardRemove() 
@@ -381,18 +395,51 @@ async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif update.message.photo:
             file_id = update.message.photo[-1].file_id
             media_type = "Photo"
+        elif update.message.voice: # 🎤 Catch Voice Notes too!
+            file_id = update.message.voice.file_id
+            media_type = "Voice Note"
+        elif update.message.audio:
+            file_id = update.message.audio.file_id
+            media_type = "Audio File"
 
         if file_id:
             await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
 
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER
+# 🌞 DAILY WISH SCHEDULER (Good Morning & Night)
+# ------------------------------------------------------------------
+async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
+    if establish_db_connection():
+        users = db_collection_users.find({}, {'user_id': 1})
+        for user in users:
+            try:
+                await context.bot.send_message(user['user_id'], "Good Morning, Jagiya! ☀️❤️ Have a beautiful day!")
+            except Exception: pass
+
+async def send_night_wish(context: ContextTypes.DEFAULT_TYPE):
+    if establish_db_connection():
+        users = db_collection_users.find({}, {'user_id': 1})
+        for user in users:
+            try:
+                await context.bot.send_message(user['user_id'], "Good Night, my love! 🌙😴 Sweet dreams!")
+            except Exception: pass
+
+# ------------------------------------------------------------------
+# 🌟 UPDATED AI CHAT HANDLER (With Voice Support)
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
     user_id = update.message.from_user.id
     user_text = update.message.text
     
+    # 🛑 BUTTON HANDLERS
+    if user_text == "💜 Change Character":
+        await switch_character(update, context)
+        return
+    elif user_text == "Send a random pic 🥵": 
+        await send_new_photo(update, context)
+        return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     selected_char = "TaeKook" 
@@ -403,6 +450,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
 
     try:
+        # 🎤 VOICE NOTE CHECK LOGIC
+        # If user says specific words, send voice note
+        voice_list = VOICES.get(selected_char, [])
+        if voice_list and any(w in user_text.lower() for w in ["love you", "miss you", "morning", "night", "voice"]):
+             if random.random() > 0.6: # 40% chance to send voice
+                 voice_id = random.choice(voice_list)
+                 try: 
+                     await update.message.reply_voice(voice_id)
+                     # Don't return, let AI text also go (or return if you only want voice)
+                 except Exception: pass
+
         if user_id not in chat_history: chat_history[user_id] = [{"role": "system", "content": system_prompt}]
         else:
             if chat_history[user_id][0]['role'] == 'system': chat_history[user_id][0]['content'] = system_prompt
@@ -453,6 +511,13 @@ async def post_init(application: Application):
     ]
     await application.bot.set_my_commands(commands)
     
+    # ⏰ SCHEDULE DAILY WISHES (UTC TIME)
+    # 8:00 AM IST is approx 2:30 AM UTC
+    # 10:00 PM IST is approx 4:30 PM UTC
+    if application.job_queue:
+        application.job_queue.run_daily(send_morning_wish, time=time(hour=2, minute=30)) 
+        application.job_queue.run_daily(send_night_wish, time=time(hour=16, minute=30))
+
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
 
@@ -479,7 +544,7 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # ✅ NO ERRORS HERE: Catch EVERYTHING from Admin and check inside
+    # ✅ NO MORE ERRORS HERE: Catch EVERYTHING from Admin
     application.add_handler(MessageHandler(
         filters.User(ADMIN_TELEGRAM_ID) & ~filters.COMMAND, 
         get_media_id
