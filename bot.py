@@ -52,7 +52,7 @@ ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797')
 # 🟣 CHARACTER SPECIFIC GIFs
 # ------------------------------------------------------------------
 GIFS = {
-    "RM": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "RM": { "love": [], "sad": [], "funny": [], "hot": [BAACAgQAAxkBAAIcLWlnh_9D2wNy2c_oisOZ4ZEUpb8OAAIZHgAChF04U75gS2qFWppAOAQ] },
     "Jin": { "love": [], "sad": [], "funny": [], "hot": [] },
     "Suga": { "love": [], "sad": [], "funny": [], "hot": [] },
     "J-Hope": { "love": [], "sad": [], "funny": [], "hot": [] },
