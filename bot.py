@@ -370,7 +370,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("Media broadcast sent.")
 
 # 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
-# ✅ FIXED: Filters Uppercase (PHOTO, VIDEO, ANIMATION, STICKER)
+# ✅ FIXED: Filters Uppercase and Sticker Class
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
@@ -494,9 +494,9 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # ✅ FIXED HERE: Using correct Uppercase Filters
+    # ✅ FIXED HERE: Using correct filters syntax for v20+
     application.add_handler(MessageHandler(
-        (filters.ANIMATION | filters.VIDEO | filters.STICKER | filters.PHOTO) & filters.User(ADMIN_TELEGRAM_ID), 
+        (filters.Animation.ALL | filters.VIDEO | filters.Sticker.ALL | filters.PHOTO) & filters.User(ADMIN_TELEGRAM_ID), 
         get_media_id
     ))
     
