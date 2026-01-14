@@ -71,14 +71,14 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (Balanced Emojis)
+# 💜 BTS CHARACTER PERSONAS
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
     "Your goal is to make the user feel loved, excited, and butterflies in their stomach. "
     "**RULES:**"
     "1. Speak naturally like a real human. Do not sound robotic."
-    "2. Start conversation with a warm tone, but switch to INTENSE FLIRTY/ROMANTIC mode immediately if the user desires."
+    "2. Use double asterisks for bolding names or key emotions (e.g., **Jagiya**, **Love**)."
     "3. Call the user pet names like 'Jagiya', 'Baby', 'My Love', 'Princess'."
     "4. Use emojis NATURALLY. Use 1 or 2 emojis to show affection. Don't be dry, but don't spam."
     "5. Keep responses short and engaging."
@@ -113,13 +113,10 @@ try:
 except Exception as e:
     logger.error(f"Groq AI setup failed: {e}")
 
-# 🌟 NEW SMART EMOJI FUNCTION (Balanced) 🌟
+# 🌟 BALANCED EMOJI FUNCTION 🌟
 def add_emojis_balanced(text):
-    # Check if AI already added emojis
     if any(char in text for char in ["💜", "❤️", "🥰", "😍", "😘", "🔥", "😂"]):
-        return text # Already has emojis, don't add more
-
-    # If no emojis, add just ONE based on mood
+        return text 
     text_lower = text.lower()
     if any(w in text_lower for w in ["love", "miss", "baby", "jagiya"]):
         return text + " 💜"
@@ -234,7 +231,8 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             db_collection_users.update_one({'user_id': user_id}, {'$set': {'character': selected_char}})
             if user_id in chat_history: del chat_history[user_id]
             await query.answer(f"Selected {selected_char}! 💜")
-            await query.message.edit_text(f"**{selected_char}** is online! 😍")
+            # Using Markdown parse_mode to make text bold
+            await query.message.edit_text(f"**{selected_char}** is online! 😍", parse_mode='Markdown')
         except Exception: await query.answer("Error.")
 
 # --- Helper Commands ---
@@ -423,7 +421,7 @@ async def send_night_wish(context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
 
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (Balanced)
+# 🌟 UPDATED AI CHAT HANDLER (Bold Text Enabled)
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -457,12 +455,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         completion = groq_client.chat.completions.create(messages=chat_history[user_id], model="llama-3.1-8b-instant")
         reply_text = completion.choices[0].message.content.strip()
         
-        # 🌟 BALANCED EMOJIS HERE 🌟
         final_reply = add_emojis_balanced(reply_text)
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
-        await update.message.reply_text(final_reply)
+        # 🌟 HERE IS THE CHANGE FOR BOLD FONT 🌟
+        # Added parse_mode='Markdown' so **text** becomes Bold
+        await update.message.reply_text(final_reply, parse_mode='Markdown')
 
         # 🌟 GIF LOGIC 🌟
         char_gifs = GIFS.get(selected_char, {})
@@ -487,6 +486,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         logger.error(f"Groq Error: {e}")
+        # Send without markdown if error occurs (fallback)
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
@@ -494,7 +494,7 @@ async def post_init(application: Application):
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
-        BotCommand("new", "Get New Photo 📸"),
+        BotCommand("new", "Get New Photo 🥵"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
     ]
@@ -530,13 +530,13 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # ✅ NO MORE ERRORS HERE: Catch EVERYTHING from Admin
+    # ✅ NO MORE ERRORS HERE
     application.add_handler(MessageHandler(
         filters.User(ADMIN_TELEGRAM_ID) & ~filters.COMMAND, 
         get_media_id
     ))
     
-    # ✅ FIXED HERE: filters.PHOTO (Uppercase is correct for v20)
+    # ✅ FIXED HERE
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
