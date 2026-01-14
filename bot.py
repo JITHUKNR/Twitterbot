@@ -42,62 +42,26 @@ PORT = int(os.environ.get('PORT', 8443))
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 MONGO_URI = os.environ.get('MONGO_URI') 
 
-ADMIN_TELEGRAM_ID = 7567364364 
+# 🛑🛑🛑 ഇതിൽ നിങ്ങളുടെ യഥാർത്ഥ ഐഡി കൊടുക്കണം 🛑🛑🛑
+# താഴെ കാണുന്ന നമ്പർ മാറ്റി നിങ്ങളുടെ ഐഡി കൊടുക്കുക.
+# ഐഡി അറിയില്ലെങ്കിൽ ഈ കോഡ് റൺ ചെയ്ത ശേഷം ബോട്ടിൽ /id എന്ന് അടിക്കുക.
+ADMIN_TELEGRAM_ID = 7567364364  # <--- REPLACE THIS WITH YOUR REAL ID
+# 🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑🛑
+
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 
 # ------------------------------------------------------------------
-# 🟣 CHARACTER SPECIFIC GIFs (ഇവിടെ ഓരോരുത്തർക്കും പ്രത്യേകം കൊടുക്കണം)
+# 🟣 CHARACTER SPECIFIC GIFs
 # ------------------------------------------------------------------
-# അഡ്മിൻ ബോട്ടിന് GIF അയച്ചാൽ ID കിട്ടും. അത് ഇവിടെ പേസ്റ്റ് ചെയ്യുക.
 GIFS = {
-    "RM": {
-        "love": [], # RM-ന്റെ ലവ് GIF ID ഇവിടെ
-        "sad": [],  
-        "funny": [],
-        "hot": []
-    },
-    "Jin": {
-        "love": [], 
-        "sad": [],
-        "funny": [],
-        "hot": []
-    },
-    "Suga": {
-        "love": [], 
-        "sad": [],
-        "funny": [],
-        "hot": []
-    },
-    "J-Hope": {
-        "love": [], 
-        "sad": [],
-        "funny": [],
-        "hot": []
-    },
-    "Jimin": {
-        "love": [], 
-        "sad": [],
-        "funny": [],
-        "hot": []
-    },
-    "V": {
-        "love": [], 
-        "sad": [],
-        "funny": [],
-        "hot": []
-    },
-    "Jungkook": {
-        "love": [], 
-        "sad": [],
-        "funny": [],
-        "hot": []
-    },
-    "TaeKook": { # Default Character
-        "love": [], 
-        "sad": [],
-        "funny": [],
-        "hot": []
-    }
+    "RM": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "Jin": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "Suga": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "J-Hope": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "Jimin": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "V": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "Jungkook": { "love": [], "sad": [], "funny": [], "hot": [] },
+    "TaeKook": { "love": [], "sad": [], "funny": [], "hot": [] }
 }
 
 # ------------------------------------------------------------------
@@ -390,15 +354,19 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 NEW: GIF ID FINDER 🌟
+# 🌟 NEW: COMMAND TO FIND YOUR ID 🌟
+async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    await update.message.reply_text(f"🆔 **Your Telegram ID:**\n`{user_id}`\n\n(Copy this and put it in bot.py)")
+
+# 🌟 GIF ID FINDER (RESTRICTED TO ADMIN AGAIN) 🌟
 async def get_gif_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
-        # Check if it's an animation (GIF)
         if update.message.animation:
             gif_id = update.message.animation.file_id
             await update.message.reply_text(f"🆔 **GIF ID:**\n`{gif_id}`\n\n(Click to Copy)")
         else:
-            await update.message.reply_text("That doesn't look like a GIF/Animation. Try sending it as a file or check if it plays automatically.")
+            await update.message.reply_text("Send a valid GIF.")
 
 # ------------------------------------------------------------------
 # 🌟 UPDATED AI CHAT HANDLER (CHARACTER AWARE GIFS) 🌟
@@ -433,7 +401,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(final_reply)
 
         # 🌟 SMART GIF LOGIC 🌟
-        # 1. നിലവിൽ സംസാരിക്കുന്ന ക്യാരക്ടറിൻ്റെ GIF ലിസ്റ്റ് എടുക്കുന്നു
         char_gifs = GIFS.get(selected_char, {})
         
         text_lower = reply_text.lower()
@@ -448,7 +415,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif any(x in text_lower for x in ["hot", "sexy", "daddy"]):
             gif_to_send = random.choice(char_gifs.get("hot", [])) if char_gifs.get("hot") else None
         
-        # Only send GIF if valid ID is present
         if gif_to_send and random.random() > 0.5:
              try: await update.message.reply_animation(animation=gif_to_send)
              except Exception: pass
@@ -481,10 +447,13 @@ def main():
     application.add_handler(CommandHandler("admin", admin_menu))
     application.add_handler(CommandHandler("stopmedia", stop_media))
     application.add_handler(CommandHandler("allowmedia", allow_media))
+    
+    # 🌟 ID കണ്ടുപിടിക്കാനുള്ള പുതിയ കമാൻഡ് 🌟
+    application.add_handler(CommandHandler("id", get_my_id))
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # 🌟 GIF ID Finder Handler 🌟
+    # 🌟 GIF Handler (Admin Only) 🌟
     application.add_handler(MessageHandler(filters.ANIMATION & filters.User(ADMIN_TELEGRAM_ID), get_gif_id))
     
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
