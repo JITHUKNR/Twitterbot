@@ -46,28 +46,59 @@ ADMIN_TELEGRAM_ID = 7567364364
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 
 # ------------------------------------------------------------------
-# 🟣 BTS STICKER COLLECTION (ഇവിടെയാണ് സ്റ്റിക്കർ ID ചേർക്കേണ്ടത്)
+# 🟣 CHARACTER SPECIFIC GIFs (ഇവിടെ ഓരോരുത്തർക്കും പ്രത്യേകം കൊടുക്കണം)
 # ------------------------------------------------------------------
-# അഡ്മിൻ ബോട്ടിന് സ്റ്റിക്കർ അയച്ചാൽ ID കിട്ടും. അത് ഇവിടെ പേസ്റ്റ് ചെയ്യുക.
-STICKERS = {
-    "love": [
-        "CAACAgUAAxkBAA...", # <--- ഇവിടെ ലവ് സ്റ്റിക്കർ ID ഇടുക
-        "CAACAgUAAxkBAA...",
-    ],
-    "sad": [
-        "CAACAgUAAxkBAA...", # <--- ഇവിടെ സങ്കടം വരുന്ന സ്റ്റിക്കർ ID ഇടുക
-    ],
-    "funny": [
-        "CAACAgUAAxkBAA...", # <--- ഇവിടെ ചിരി വരുന്ന സ്റ്റിക്കർ ID ഇടുക
-    ],
-    "hot": [
-        "CAACAgUAAxkBAA...", # <--- ഇവിടെ ഹോട്ട്/ഫ്ലർട്ടി സ്റ്റിക്കർ ID ഇടുക
-    ],
-    "angry": [
-         "CAACAgUAAxkBAA...", # <--- ഇവിടെ ദേഷ്യം വരുന്ന സ്റ്റിക്കർ ID ഇടുക
-    ]
+# അഡ്മിൻ ബോട്ടിന് GIF അയച്ചാൽ ID കിട്ടും. അത് ഇവിടെ പേസ്റ്റ് ചെയ്യുക.
+GIFS = {
+    "RM": {
+        "love": [], # RM-ന്റെ ലവ് GIF ID ഇവിടെ
+        "sad": [],  
+        "funny": [],
+        "hot": []
+    },
+    "Jin": {
+        "love": [], 
+        "sad": [],
+        "funny": [],
+        "hot": []
+    },
+    "Suga": {
+        "love": [], 
+        "sad": [],
+        "funny": [],
+        "hot": []
+    },
+    "J-Hope": {
+        "love": [], 
+        "sad": [],
+        "funny": [],
+        "hot": []
+    },
+    "Jimin": {
+        "love": [], 
+        "sad": [],
+        "funny": [],
+        "hot": []
+    },
+    "V": {
+        "love": [], 
+        "sad": [],
+        "funny": [],
+        "hot": []
+    },
+    "Jungkook": {
+        "love": [], 
+        "sad": [],
+        "funny": [],
+        "hot": []
+    },
+    "TaeKook": { # Default Character
+        "love": [], 
+        "sad": [],
+        "funny": [],
+        "hot": []
+    }
 }
-# (നിലവിൽ ഇത് വെറുതെ കിടക്കട്ടെ, കോഡ് റൺ ചെയ്ത ശേഷം ഐഡി കണ്ടുപിടിച്ച് മാറ്റാം)
 
 # ------------------------------------------------------------------
 # 💜 BTS CHARACTER PERSONAS 💜
@@ -359,14 +390,18 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 NEW: STICKER ID FINDER 🌟
-async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🌟 NEW: GIF ID FINDER 🌟
+async def get_gif_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
-        sticker_id = update.message.sticker.file_id
-        await update.message.reply_text(f"🆔 **Sticker ID:**\n`{sticker_id}`\n\n(Click to Copy)")
+        # Check if it's an animation (GIF)
+        if update.message.animation:
+            gif_id = update.message.animation.file_id
+            await update.message.reply_text(f"🆔 **GIF ID:**\n`{gif_id}`\n\n(Click to Copy)")
+        else:
+            await update.message.reply_text("That doesn't look like a GIF/Animation. Try sending it as a file or check if it plays automatically.")
 
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (WITH STICKER REACTION) 🌟
+# 🌟 UPDATED AI CHAT HANDLER (CHARACTER AWARE GIFS) 🌟
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -395,27 +430,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
-        # 1. Send Text Reply
         await update.message.reply_text(final_reply)
 
-        # 2. 🌟 Send Sticker Logic 🌟
-        # Check mood keywords to send relevant sticker
+        # 🌟 SMART GIF LOGIC 🌟
+        # 1. നിലവിൽ സംസാരിക്കുന്ന ക്യാരക്ടറിൻ്റെ GIF ലിസ്റ്റ് എടുക്കുന്നു
+        char_gifs = GIFS.get(selected_char, {})
+        
         text_lower = reply_text.lower()
-        sticker_to_send = None
+        gif_to_send = None
 
         if any(x in text_lower for x in ["love", "kiss", "heart", "baby"]):
-            sticker_to_send = random.choice(STICKERS.get("love", [])) if STICKERS.get("love") else None
+            gif_to_send = random.choice(char_gifs.get("love", [])) if char_gifs.get("love") else None
         elif any(x in text_lower for x in ["sad", "cry", "sorry"]):
-            sticker_to_send = random.choice(STICKERS.get("sad", [])) if STICKERS.get("sad") else None
+            gif_to_send = random.choice(char_gifs.get("sad", [])) if char_gifs.get("sad") else None
         elif any(x in text_lower for x in ["haha", "lol", "funny"]):
-            sticker_to_send = random.choice(STICKERS.get("funny", [])) if STICKERS.get("funny") else None
+            gif_to_send = random.choice(char_gifs.get("funny", [])) if char_gifs.get("funny") else None
         elif any(x in text_lower for x in ["hot", "sexy", "daddy"]):
-            sticker_to_send = random.choice(STICKERS.get("hot", [])) if STICKERS.get("hot") else None
+            gif_to_send = random.choice(char_gifs.get("hot", [])) if char_gifs.get("hot") else None
         
-        # Only send sticker if valid ID is present (not placeholders) and random chance (50%) to avoid spam
-        if sticker_to_send and "CAACAg" in sticker_to_send and random.random() > 0.5:
-             try:
-                 await update.message.reply_sticker(sticker=sticker_to_send)
+        # Only send GIF if valid ID is present
+        if gif_to_send and random.random() > 0.5:
+             try: await update.message.reply_animation(animation=gif_to_send)
              except Exception: pass
 
         try: await context.bot.send_message(ADMIN_TELEGRAM_ID, f"📩 {update.message.from_user.first_name} ({selected_char}): {user_text}")
@@ -449,8 +484,8 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # 🌟 Sticker ID Finder Handler Added 🌟
-    application.add_handler(MessageHandler(filters.STICKER & filters.User(ADMIN_TELEGRAM_ID), get_sticker_id))
+    # 🌟 GIF ID Finder Handler 🌟
+    application.add_handler(MessageHandler(filters.ANIMATION & filters.User(ADMIN_TELEGRAM_ID), get_gif_id))
     
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO | filters.VIDEO), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
