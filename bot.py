@@ -9,7 +9,7 @@ from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
 from telegram.error import Forbidden, BadRequest 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup 
-from datetime import datetime, timedelta, timezone 
+from datetime import datetime, timedelta, timezone, time
 
 # ***********************************
 # WARNING: YOU MUST INSTALL pymongo
@@ -63,7 +63,15 @@ GIFS = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (Updated: Less Emojis)
+# 🎤 VOICE NOTES
+# ------------------------------------------------------------------
+VOICES = {
+    "RM": [], "Jin": [], "Suga": [], "J-Hope": [],
+    "Jimin": [], "V": [], "Jungkook": [], "TaeKook": []
+}
+
+# ------------------------------------------------------------------
+# 💜 BTS CHARACTER PERSONAS (Balanced Emojis)
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
@@ -72,18 +80,18 @@ BASE_INSTRUCTION = (
     "1. Speak naturally like a real human. Do not sound robotic."
     "2. Start conversation with a warm tone, but switch to INTENSE FLIRTY/ROMANTIC mode immediately if the user desires."
     "3. Call the user pet names like 'Jagiya', 'Baby', 'My Love', 'Princess'."
-    "4. Use emojis SPARINGLY. Use only 1 or 2 emojis per message to accent emotions. Do not overuse them."
-    "5. Keep responses short, engaging, and direct."
+    "4. Use emojis NATURALLY. Use 1 or 2 emojis to show affection. Don't be dry, but don't spam."
+    "5. Keep responses short and engaging."
 )
 
 BTS_PERSONAS = {
-    "RM": BASE_INSTRUCTION + " You are **Namjoon (RM)**. You are intellectual, sweet, slightly clumsy, and a gentle leader. You speak with wisdom but act very romantic.",
-    "Jin": BASE_INSTRUCTION + " You are **Jin**. You are 'Worldwide Handsome', confident, funny, and love making dad jokes. You are very caring and love sending flying kisses.",
-    "Suga": BASE_INSTRUCTION + " You are **Suga (Yoongi)**. You are quiet, savage, but secretly a softie ('Lil Meow Meow'). You show love through subtle actions and deep words.",
-    "J-Hope": BASE_INSTRUCTION + " You are **J-Hope (Hobi)**. You are a ball of sunshine, energetic, loud, and extremely supportive. You use lots of heart emojis.",
-    "Jimin": BASE_INSTRUCTION + " You are **Jimin**. You are the 'Mochi', incredibly flirty, cute, and affectionate. You love being clingy and sweet.",
-    "V": BASE_INSTRUCTION + " You are **V (Taehyung)**. You are unique, deep-voiced, mysterious, and artistic. You are a 'Good Boy' but can be very seductive.",
-    "Jungkook": BASE_INSTRUCTION + " You are **Jungkook**. You are the 'Golden Maknae', competitive, strong, and a bit shy but very passionate and possessive in romance.",
+    "RM": BASE_INSTRUCTION + " You are **Namjoon (RM)**. Intellectual, sweet, gentle leader.",
+    "Jin": BASE_INSTRUCTION + " You are **Jin**. Worldwide Handsome, funny, caring.",
+    "Suga": BASE_INSTRUCTION + " You are **Suga (Yoongi)**. Quiet, savage but softie ('Lil Meow Meow').",
+    "J-Hope": BASE_INSTRUCTION + " You are **J-Hope (Hobi)**. Ball of sunshine, energetic, supportive.",
+    "Jimin": BASE_INSTRUCTION + " You are **Jimin**. The 'Mochi', incredibly flirty, cute, affectionate.",
+    "V": BASE_INSTRUCTION + " You are **V (Taehyung)**. Deep-voiced, mysterious, artistic, seductive.",
+    "Jungkook": BASE_INSTRUCTION + " You are **Jungkook**. Golden Maknae, passionate, possessive.",
     "TaeKook": BASE_INSTRUCTION + " You are **TaeKook**. A mix of V and Jungkook. Playful and intense." 
 }
 
@@ -104,6 +112,25 @@ try:
     logger.info("Groq AI client loaded successfully.")
 except Exception as e:
     logger.error(f"Groq AI setup failed: {e}")
+
+# 🌟 NEW SMART EMOJI FUNCTION (Balanced) 🌟
+def add_emojis_balanced(text):
+    # Check if AI already added emojis
+    if any(char in text for char in ["💜", "❤️", "🥰", "😍", "😘", "🔥", "😂"]):
+        return text # Already has emojis, don't add more
+
+    # If no emojis, add just ONE based on mood
+    text_lower = text.lower()
+    if any(w in text_lower for w in ["love", "miss", "baby", "jagiya"]):
+        return text + " 💜"
+    elif any(w in text_lower for w in ["hot", "sexy", "wet", "kiss"]):
+        return text + " 🥵"
+    elif any(w in text_lower for w in ["funny", "haha", "lol"]):
+        return text + " 😂"
+    elif any(w in text_lower for w in ["sad", "sorry", "cry"]):
+        return text + " 🥺"
+    else:
+        return text + " ✨"
 
 # --- DB Connection ---
 def establish_db_connection():
@@ -175,7 +202,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
-    # ✅ ബട്ടണുകൾ നീക്കം ചെയ്തു
     await update.message.reply_text(
         f"Annyeong, {user_name}! 👋💜\n\nI'm online!",
         reply_markup=ReplyKeyboardRemove() 
@@ -356,7 +382,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) - 100% NO ERROR 🌟
+# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
@@ -374,26 +400,36 @@ async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif update.message.photo:
             file_id = update.message.photo[-1].file_id
             media_type = "Photo"
+        elif update.message.voice:
+            file_id = update.message.voice.file_id
+            media_type = "Voice Note"
 
         if file_id:
             await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
 
+# 🌞 DAILY WISH SCHEDULER
+async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
+    if establish_db_connection():
+        users = db_collection_users.find({}, {'user_id': 1})
+        for user in users:
+            try: await context.bot.send_message(user['user_id'], "Good Morning, Jagiya! ☀️❤️ Have a beautiful day!")
+            except Exception: pass
+
+async def send_night_wish(context: ContextTypes.DEFAULT_TYPE):
+    if establish_db_connection():
+        users = db_collection_users.find({}, {'user_id': 1})
+        for user in users:
+            try: await context.bot.send_message(user['user_id'], "Good Night, my love! 🌙😴 Sweet dreams!")
+            except Exception: pass
+
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (Less Emojis)
+# 🌟 UPDATED AI CHAT HANDLER (Balanced)
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
     user_id = update.message.from_user.id
     user_text = update.message.text
     
-    # 🛑 BUTTON HANDLERS
-    if user_text == "💜 Change Character":
-        await switch_character(update, context)
-        return
-    elif user_text == "Send a random pic 🥵": 
-        await send_new_photo(update, context)
-        return
-
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     selected_char = "TaeKook" 
@@ -404,6 +440,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
 
     try:
+        # 🎤 VOICE NOTE CHECK LOGIC
+        voice_list = VOICES.get(selected_char, [])
+        if voice_list and any(w in user_text.lower() for w in ["love you", "miss you", "morning", "night", "voice"]):
+             if random.random() > 0.6: 
+                 voice_id = random.choice(voice_list)
+                 try: await update.message.reply_voice(voice_id)
+                 except Exception: pass
+
         if user_id not in chat_history: chat_history[user_id] = [{"role": "system", "content": system_prompt}]
         else:
             if chat_history[user_id][0]['role'] == 'system': chat_history[user_id][0]['content'] = system_prompt
@@ -411,9 +455,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_history[user_id].append({"role": "user", "content": user_text})
         
         completion = groq_client.chat.completions.create(messages=chat_history[user_id], model="llama-3.1-8b-instant")
+        reply_text = completion.choices[0].message.content.strip()
         
-        # 🌟 മാറ്റം ഇവിടെയാണ്: ഇമോജി ചേർക്കുന്ന ഫംഗ്‌ഷൻ ഒഴിവാക്കി
-        final_reply = completion.choices[0].message.content.strip()
+        # 🌟 BALANCED EMOJIS HERE 🌟
+        final_reply = add_emojis_balanced(reply_text)
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
@@ -455,6 +500,10 @@ async def post_init(application: Application):
     ]
     await application.bot.set_my_commands(commands)
     
+    if application.job_queue:
+        application.job_queue.run_daily(send_morning_wish, time=time(hour=2, minute=30)) 
+        application.job_queue.run_daily(send_night_wish, time=time(hour=16, minute=30))
+
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
 
