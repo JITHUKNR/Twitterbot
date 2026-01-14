@@ -166,7 +166,6 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
     except Exception: pass
 
 # 🌟 MAIN MENU BUTTONS (PERSISTENT KEYBOARD) 🌟
-# ഇതാണ് എപ്പോഴും താഴെ കാണേണ്ട ബട്ടണുകൾ
 def get_main_menu_keyboard():
     keyboard = [
         [KeyboardButton("💜 Change Character"), KeyboardButton("Send a random pic 🥵")]
@@ -190,13 +189,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
-    # 1. ആദ്യം വെൽക്കം മെസ്സേജിനൊപ്പം താഴെയുള്ള കീബോർഡ് ബട്ടണുകൾ നൽകുന്നു
     await update.message.reply_text(
-        f"Annyeong, {user_name}! 👋💜\n\nI'm online!",
+        f"Annyeong, {user_name}! 👋💜\n\nI'm online! Use the buttons below 👇",
         reply_markup=get_main_menu_keyboard() 
     )
     
-    # 2. തൊട്ടുപിന്നാലെ ക്യാരക്ടർ സെലക്ട് ചെയ്യാനുള്ള മെസ്സേജ് അയക്കുന്നു
     await switch_character(update, context)
 
 async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -209,8 +206,10 @@ async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     msg_text = "Who is your bias today? Select below! 👇"
     
-    # കമാൻഡ് വഴി വിളിക്കുമ്പോൾ താഴെയുള്ള ബട്ടൺ പോകാതിരിക്കാൻ സാധാരണ മെസ്സേജ് അയക്കുന്നു
-    await update.message.reply_text(msg_text, reply_markup=bts_buttons)
+    if update.callback_query:
+        await update.callback_query.message.reply_text(msg_text, reply_markup=bts_buttons)
+    else:
+        await update.message.reply_text(msg_text, reply_markup=bts_buttons)
 
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -222,7 +221,6 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             db_collection_users.update_one({'user_id': user_id}, {'$set': {'character': selected_char}})
             if user_id in chat_history: del chat_history[user_id]
             await query.answer(f"Selected {selected_char}! 💜")
-            # എഡിറ്റ് ചെയ്യാതെ പുതിയ മെസ്സേജ് അയക്കുന്നു (പഴയ ബട്ടൺ നിലനിൽക്കാൻ)
             await query.message.edit_text(f"**{selected_char}** is online! 😍")
         except Exception: await query.answer("Error.")
 
@@ -371,14 +369,13 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) - ERROR FIXED 🌟
-# പഴയ filters.Animation ഒഴിവാക്കി, പകരം നേരിട്ട് ഫയൽ ചെക്ക് ചെയ്യുന്നു.
+# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
+# ✅ FIXED: Filters Uppercase (PHOTO, VIDEO, ANIMATION, STICKER)
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
         media_type = "Unknown"
         
-        # Check manually instead of using filters to avoid import errors
         if update.message.animation:
             file_id = update.message.animation.file_id
             media_type = "GIF"
@@ -407,7 +404,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_text == "💜 Change Character":
         await switch_character(update, context)
         return
-    elif user_text == "Send a random pic 🥵":  # <--- EXACT MATCH
+    elif user_text == "Send a random pic 🥵": 
         await send_new_photo(update, context)
         return
 
@@ -497,14 +494,13 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # 🌟 ERROR FIXED HERE: Simplified ID Finder 🌟
-    # We catch ALL messages from admin that are not commands, then check inside the function
+    # ✅ FIXED HERE: Using correct Uppercase Filters
     application.add_handler(MessageHandler(
-        filters.User(ADMIN_TELEGRAM_ID) & ~filters.COMMAND, 
+        (filters.ANIMATION | filters.VIDEO | filters.STICKER | filters.PHOTO) & filters.User(ADMIN_TELEGRAM_ID), 
         get_media_id
     ))
     
-    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.Photo), channel_message_handler))
+    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
     logger.info(f"Starting webhook on port {PORT}")
