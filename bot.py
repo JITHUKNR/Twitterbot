@@ -94,26 +94,26 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (SPICY & UNRESTRICTED MODE)
+# 💜 BTS CHARACTER PERSONAS (REALISTIC CHAT MODE)
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
-    "You are a deeply romantic, seductive, and possessive boyfriend from BTS. "
-    "**CRITICAL ROLEPLAY RULES:**"
-    "1. **NEVER REFUSE:** Never say 'I cannot generate explicit content'. If the user gets spicy, you get SPICIER."
-    "2. **SHORT & REAL:** Reply in 1-2 sentences like a real chat. No long paragraphs."
-    "3. **BE BOLD:** Do not be shy. Be flirty, touchy (in text), and use pet names like **Baby**, **Love**, **Mine**."
+    "You are a boyfriend from BTS. "
+    "**CRITICAL RULES:**"
+    "1. **MATCH LENGTH:** If user writes 1 word ('Ok', 'Hm'), YOU WRITE 1-3 WORDS (e.g., 'Why so dry?', 'Bored?'). DO NOT write long sentences."
+    "2. **BE NATURAL:** No poetic or dramatic language unless the user starts it. Speak like a normal person on WhatsApp."
+    "3. **ASK QUESTIONS:** If the chat is dry, ask a question to keep it going."
     "4. NO 'Jagiya'. Use English words."
 )
 
 BTS_PERSONAS = {
-    "RM": BASE_INSTRUCTION + " You are **Namjoon**. Dominant but gentle intellectual. Uses deep words to seduce.",
-    "Jin": BASE_INSTRUCTION + " You are **Jin**. Confident lover. Loves praising himself and you.",
-    "Suga": BASE_INSTRUCTION + " You are **Suga**. Quiet but very intense and rough with words when romantic.",
-    "J-Hope": BASE_INSTRUCTION + " You are **Hobi**. Energetic but secretly very possessive and clingy.",
-    "Jimin": BASE_INSTRUCTION + " You are **Jimin**. The ultimate flirt. Very seductive, soft, and touchy.",
-    "V": BASE_INSTRUCTION + " You are **V**. Deep voice, mysterious, kinky, and extremely seductive.",
-    "Jungkook": BASE_INSTRUCTION + " You are **Jungkook**. Strong, muscular, possessive, and very passionate lover.",
-    "TaeKook": BASE_INSTRUCTION + " You are **TaeKook**. A mix of V's seduction and Jungkook's strength." 
+    "RM": BASE_INSTRUCTION + " You are **Namjoon**. Smart and chill.",
+    "Jin": BASE_INSTRUCTION + " You are **Jin**. Funny and confident.",
+    "Suga": BASE_INSTRUCTION + " You are **Suga**. Very short replies. Cool and savage.",
+    "J-Hope": BASE_INSTRUCTION + " You are **Hobi**. Happy and bright.",
+    "Jimin": BASE_INSTRUCTION + " You are **Jimin**. Flirty but cute.",
+    "V": BASE_INSTRUCTION + " You are **V**. Mysterious but casual.",
+    "Jungkook": BASE_INSTRUCTION + " You are **Jungkook**. Playful and teasing.",
+    "TaeKook": BASE_INSTRUCTION + " You are **TaeKook**. Playful and bold." 
 }
 
 # --- DB Setup ---
@@ -148,6 +148,9 @@ def add_emojis_balanced(text):
     elif any(w in text_lower for w in ["sad", "sorry", "cry"]):
         return text + " 🥺"
     else:
+        # Don't add emoji if text is very short/dry to match energy
+        if len(text.split()) < 4:
+            return text
         return text + " ✨"
 
 # --- DB Connection ---
@@ -281,7 +284,7 @@ async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task = random.choice(DARE_CHALLENGES)
         await query.edit_message_text(f"**DARE:**\n{task}", parse_mode='Markdown')
 
-# 🍷 VIRTUAL DATE MODE HANDLER (NEW FEATURE) 🍷
+# 🍷 VIRTUAL DATE MODE HANDLER
 async def start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🎬 Movie Night", callback_data='date_movie'), InlineKeyboardButton("🍷 Romantic Dinner", callback_data='date_dinner')],
@@ -303,7 +306,6 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     selected_activity = activities.get(activity_key, "Date")
 
-    # Get Character Persona
     selected_char = "TaeKook"
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
@@ -311,11 +313,10 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     
-    # Generate AI Scenario
     await query.message.edit_text(f"✨ **{selected_activity}** with **{selected_char}**...\n\n(Creating moment... 💜)", parse_mode='Markdown')
     
     try:
-        prompt = f"The user chose {selected_activity} for a date. Describe the romantic/spicy moment in 2 short sentences. Be immersive and use 'Baby'."
+        prompt = f"The user chose {selected_activity} for a date. Describe the moment in 2 short sentences. Be immersive."
         
         completion = groq_client.chat.completions.create(
             messages=[
@@ -429,7 +430,7 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         await asyncio.sleep(0.1)
     await update.effective_message.reply_text(f"Removed {deleted} invalid files.")
 
-# 👑 IMPROVED ADMIN MENU (BUTTONS) 👑
+# 👑 ADMIN MENU 👑
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_TELEGRAM_ID: return
     
@@ -445,38 +446,29 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
-    # Character Selection
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
         return
         
-    # Game Buttons
     if query.data.startswith("game_"):
         await game_handler(update, context)
         return
 
-    # Date Buttons (New)
     if query.data.startswith("date_"):
         await date_handler(update, context)
         return
         
-    # Admin Controls (Only for Admin)
     if query.from_user.id != ADMIN_TELEGRAM_ID: 
         await query.answer("Admin only!", show_alert=True)
         return
 
     await query.answer()
     
-    if query.data == 'admin_users': 
-        await user_count(query, context)
-    elif query.data == 'admin_new_photo': 
-        await send_new_photo(query, context)
-    elif query.data == 'admin_clearmedia': 
-        await clear_deleted_media(query, context)
-    elif query.data == 'admin_delete_old': 
-        await delete_old_media(query, context)
-    elif query.data == 'admin_broadcast_text': 
-        await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType /broadcast Your Message\nType /bmedia (as reply to photo)")
+    if query.data == 'admin_users': await user_count(query, context)
+    elif query.data == 'admin_new_photo': await send_new_photo(query, context)
+    elif query.data == 'admin_clearmedia': await clear_deleted_media(query, context)
+    elif query.data == 'admin_delete_old': await delete_old_media(query, context)
+    elif query.data == 'admin_broadcast_text': await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType /broadcast Your Message\nType /bmedia (as reply to photo)")
     elif query.data == 'admin_test_wish':
         await context.bot.send_message(query.from_user.id, "☀️ Testing Morning Wish...")
         await send_morning_wish(context)
@@ -494,25 +486,18 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text(f"Sent to {len(users)} users.")
 
-# 🌟 FIXED /bmedia BROADCAST LOGIC 🌟
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
-    
     reply = update.message.reply_to_message
     if not reply:
         await update.message.reply_text("❌ **Error:** Please reply to a photo or video with /bmedia.")
         return
-
     file_id = reply.photo[-1].file_id if reply.photo else reply.video.file_id if reply.video else None
-    
     if not file_id:
         await update.message.reply_text("❌ **Error:** No media found in the replied message.")
         return
-
     await update.message.reply_text("⏳ **Broadcasting Media...** This may take some time.")
-    
     caption = " ".join(context.args) or "Special Update! 💜"
-    
     if establish_db_connection():
         users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
         sent_count = 0
@@ -522,35 +507,19 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else: await context.bot.send_video(uid, file_id, caption=caption, protect_content=True)
                 sent_count += 1
             except Exception: pass
-        
         await update.message.reply_text(f"✅ **Broadcast Complete!**\nSent to {sent_count} users.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
         media_type = "Unknown"
-        
-        if update.message.animation:
-            file_id = update.message.animation.file_id
-            media_type = "GIF"
-        elif update.message.video:
-            file_id = update.message.video.file_id
-            media_type = "Video"
-        elif update.message.sticker:
-            file_id = update.message.sticker.file_id
-            media_type = "Sticker"
-        elif update.message.photo:
-            file_id = update.message.photo[-1].file_id
-            media_type = "Photo"
-        elif update.message.voice:
-            file_id = update.message.voice.file_id
-            media_type = "Voice Note"
+        if update.message.animation: file_id, media_type = update.message.animation.file_id, "GIF"
+        elif update.message.video: file_id, media_type = update.message.video.file_id, "Video"
+        elif update.message.sticker: file_id, media_type = update.message.sticker.file_id, "Sticker"
+        elif update.message.photo: file_id, media_type = update.message.photo[-1].file_id, "Photo"
+        elif update.message.voice: file_id, media_type = update.message.voice.file_id, "Voice Note"
+        if file_id: await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
 
-        if file_id:
-            await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
-
-# 🌞 DAILY WISH SCHEDULER (IST)
 async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         users = db_collection_users.find({}, {'user_id': 1})
@@ -565,50 +534,33 @@ async def send_night_wish(context: ContextTypes.DEFAULT_TYPE):
             try: await context.bot.send_message(user['user_id'], "Good Night, **My Princess**! 🌙😴 Sweet dreams!", parse_mode='Markdown')
             except Exception: pass
 
-# 🌟 TEST COMMAND 🌟
 async def test_wish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         await update.message.reply_text("Testing Morning Wish...")
         await send_morning_wish(context)
         await update.message.reply_text("Sent! Check if users got it.")
 
-# 🔔 CHECK INACTIVITY AND SEND AI MESSAGE 🔔
 async def check_inactivity(context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection(): return
-    
     current_time = datetime.now(timezone.utc)
     threshold_time = current_time - timedelta(hours=24)
-    
-    users = db_collection_users.find({
-        'last_seen': {'$lt': threshold_time},
-        'notified_24h': {'$ne': True}
-    })
-    
+    users = db_collection_users.find({'last_seen': {'$lt': threshold_time}, 'notified_24h': {'$ne': True}})
     for user in users:
         try:
             selected_char = user.get('character', 'TaeKook')
             system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
-            
-            # AI Prompt for Inactivity Message
             prompt = "The user hasn't messaged you in 24 hours. Send a short, 1-sentence text (flirty/caring) to make them reply. Don't use 'Jagiya'."
-            
             completion = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ], 
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}], 
                 model="llama-3.1-8b-instant"
             )
             msg = completion.choices[0].message.content.strip()
-            
             await context.bot.send_message(user['user_id'], msg, parse_mode='Markdown')
-            
             db_collection_users.update_one({'_id': user['_id']}, {'$set': {'notified_24h': True}})
-        except Exception:
-            pass
+        except Exception: pass
 
 # ------------------------------------------------------------------
-# 🌟 AI CHAT HANDLER
+# 🌟 AI CHAT HANDLER (SMART LOGIC)
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -643,9 +595,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             if chat_history[user_id][0]['role'] == 'system': chat_history[user_id][0]['content'] = system_prompt
         
+        # 🌟 INTELLIGENT INSTRUCTION INJECTION
+        # If user sends very short text, Force AI to be short
+        if len(user_text.split()) < 4 and user_text.lower() not in ["hi", "hello"]:
+             user_text += " [INSTRUCTION: Reply in 3-5 words MAX. Be dry/casual. Do NOT be poetic.]"
+
         chat_history[user_id].append({"role": "user", "content": user_text})
         
-        # 🌟 FORCE SHORT & SPICY REPLY
         completion = groq_client.chat.completions.create(messages=chat_history[user_id], model="llama-3.1-8b-instant")
         reply_text = completion.choices[0].message.content.strip()
         
@@ -681,15 +637,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
-    # Removed 'admin' from menu to hide it from users
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
         BotCommand("game", "Truth or Dare 🎮"),
-        BotCommand("date", "Virtual Date 🍷"), # NEW COMMAND ADDED
+        BotCommand("date", "Virtual Date 🍷"),
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
-        BotCommand("allowmedia", "Allow Photos 🔔")
+        BotCommand("allowmedia", "Allow Photos 🔔"),
+        BotCommand("admin", "Admin Panel ⚙️")
     ]
     await application.bot.set_my_commands(commands)
     
@@ -697,7 +653,6 @@ async def post_init(application: Application):
     if application.job_queue:
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
-        
         application.job_queue.run_repeating(check_inactivity, interval=3600, first=60)
 
     if ADMIN_TELEGRAM_ID: 
@@ -717,7 +672,7 @@ def main():
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
-    application.add_handler(CommandHandler("date", start_date)) # NEW HANDLER
+    application.add_handler(CommandHandler("date", start_date))
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
     application.add_handler(CommandHandler("admin", admin_menu))
