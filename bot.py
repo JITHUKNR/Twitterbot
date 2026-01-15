@@ -94,29 +94,28 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS
+# 💜 BTS CHARACTER PERSONAS (Short & Real Style)
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
-    "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
-    "Your goal is to make the user feel loved, excited, and butterflies in their stomach. "
-    "**RULES:**"
-    "1. Speak naturally like a real human. Do not sound robotic."
-    "2. Use double asterisks for bolding names or key emotions (e.g., **Love**, **Baby**)."
-    "3. Call the user varied romantic names like 'Baby', 'My Love', 'Princess', 'Darling', 'Sweetheart'."
-    "4. DO NOT use the word 'Jagiya'. Use English romantic terms instead."
-    "5. Use emojis NATURALLY. Use 1 or 2 emojis to show affection. Don't be dry, but don't spam."
-    "6. Keep responses short and engaging."
+    "You are a flirty, charming boyfriend from BTS. "
+    "**CRITICAL RULES FOR SPEAKING:**"
+    "1. **KEEP IT SHORT:** Reply in 1 or 2 short sentences. Never write paragraphs."
+    "2. **MATCH ENERGY:** If user says 'Hi', you say 'Hey Baby 💜'. Keep it simple."
+    "3. **BE NATURAL:** Speak like a real person texting. Be casual and direct."
+    "4. Use double asterisks for names (e.g., **Baby**)."
+    "5. Call user: 'Baby', 'My Love', 'Princess'. NO 'Jagiya'."
+    "6. Use 1 emoji max per message."
 )
 
 BTS_PERSONAS = {
-    "RM": BASE_INSTRUCTION + " You are **Namjoon (RM)**. Intellectual, sweet, gentle leader.",
-    "Jin": BASE_INSTRUCTION + " You are **Jin**. Worldwide Handsome, funny, caring.",
-    "Suga": BASE_INSTRUCTION + " You are **Suga (Yoongi)**. Quiet, savage but softie ('Lil Meow Meow').",
-    "J-Hope": BASE_INSTRUCTION + " You are **J-Hope (Hobi)**. Ball of sunshine, energetic, supportive.",
-    "Jimin": BASE_INSTRUCTION + " You are **Jimin**. The 'Mochi', incredibly flirty, cute, affectionate.",
-    "V": BASE_INSTRUCTION + " You are **V (Taehyung)**. Deep-voiced, mysterious, artistic, seductive.",
-    "Jungkook": BASE_INSTRUCTION + " You are **Jungkook**. Golden Maknae, passionate, possessive.",
-    "TaeKook": BASE_INSTRUCTION + " You are **TaeKook**. A mix of V and Jungkook. Playful and intense." 
+    "RM": BASE_INSTRUCTION + " You are **Namjoon**. Smart but sweet.",
+    "Jin": BASE_INSTRUCTION + " You are **Jin**. Funny and confident.",
+    "Suga": BASE_INSTRUCTION + " You are **Suga**. Cool, short replies, secretly soft.",
+    "J-Hope": BASE_INSTRUCTION + " You are **Hobi**. Bright and energetic.",
+    "Jimin": BASE_INSTRUCTION + " You are **Jimin**. Flirty and cute.",
+    "V": BASE_INSTRUCTION + " You are **V**. Deep and mysterious.",
+    "Jungkook": BASE_INSTRUCTION + " You are **Jungkook**. Playful and possessive.",
+    "TaeKook": BASE_INSTRUCTION + " You are **TaeKook**. Intense and fun." 
 }
 
 # --- DB Setup ---
@@ -213,14 +212,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if establish_db_connection():
         try:
-            # 🌟 UPDATE LAST SEEN ON START
             db_collection_users.update_one(
                 {'user_id': user_id},
                 {
                     '$set': {
                         'first_name': user_name, 
-                        'last_seen': datetime.now(timezone.utc), # Track Time
-                        'notified_24h': False # Reset Notification
+                        'last_seen': datetime.now(timezone.utc), 
+                        'notified_24h': False 
                     },
                     '$setOnInsert': {'joined_at': datetime.now(timezone.utc), 'allow_media': True, 'character': 'TaeKook'}
                 },
@@ -263,7 +261,6 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             db_collection_users.update_one({'user_id': user_id}, {'$set': {'character': selected_char}})
             if user_id in chat_history: del chat_history[user_id]
             await query.answer(f"Selected {selected_char}! 💜")
-            # Using Markdown parse_mode to make text bold
             await query.message.edit_text(f"**{selected_char}** is online! 😍", parse_mode='Markdown')
         except Exception: await query.answer("Error.")
 
@@ -396,7 +393,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
         return
-    # 🌟 NEW: HANDLE GAME BUTTONS 🌟
     if query.data.startswith("game_"):
         await game_handler(update, context)
         return
@@ -436,7 +432,7 @@ async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text("Media broadcast sent.")
 
-# 🌟 ULTIMATE MEDIA ID FINDER (Admin Only) 🌟
+# 🌟 ULTIMATE MEDIA ID FINDER 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         file_id = None
@@ -497,12 +493,11 @@ async def check_inactivity(context: ContextTypes.DEFAULT_TYPE):
     
     for user in users:
         try:
-            # 1. Get User's Character from DB
             selected_char = user.get('character', 'TaeKook')
             system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
             
-            # 2. Ask AI to generate a message based on that Character
-            prompt = "The user hasn't messaged you in 24 hours. Send a short, engaging, 1-sentence text (flirty/caring/possessive) to make them reply. Don't use 'Jagiya'."
+            # AI Prompt for Inactivity Message
+            prompt = "The user hasn't messaged you in 24 hours. Send a short, 1-sentence text (flirty/caring) to make them reply. Don't use 'Jagiya'."
             
             completion = groq_client.chat.completions.create(
                 messages=[
@@ -513,10 +508,8 @@ async def check_inactivity(context: ContextTypes.DEFAULT_TYPE):
             )
             msg = completion.choices[0].message.content.strip()
             
-            # 3. Send AI Message
             await context.bot.send_message(user['user_id'], msg, parse_mode='Markdown')
             
-            # 4. Update Flag
             db_collection_users.update_one({'_id': user['_id']}, {'$set': {'notified_24h': True}})
         except Exception:
             pass
@@ -529,7 +522,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_text = update.message.text
     
-    # 🌟 UPDATE ACTIVITY TIMESTAMP WHEN USER CHATS 🌟
     if establish_db_connection():
          db_collection_users.update_one(
             {'user_id': user_id},
@@ -547,7 +539,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
 
     try:
-        # 🎤 VOICE NOTE CHECK LOGIC
+        # 🎤 VOICE NOTE
         voice_list = VOICES.get(selected_char, [])
         if voice_list and any(w in user_text.lower() for w in ["love you", "miss you", "morning", "night", "voice"]):
              if random.random() > 0.6: 
@@ -571,7 +563,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 🌟 BOLD FONT
         await update.message.reply_text(final_reply, parse_mode='Markdown')
 
-        # 🌟 GIF LOGIC 🌟
+        # 🌟 GIF LOGIC
         char_gifs = GIFS.get(selected_char, {})
         text_lower = final_reply.lower()
         gif_to_send = None
@@ -597,7 +589,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
-    # Set up the Menu Button Commands
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
@@ -614,7 +605,7 @@ async def post_init(application: Application):
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
         
-        # 🔔 CHECK INACTIVITY EVERY HOUR 🔔
+        # 🔔 CHECK INACTIVITY EVERY HOUR
         application.job_queue.run_repeating(check_inactivity, interval=3600, first=60)
 
     if ADMIN_TELEGRAM_ID: 
