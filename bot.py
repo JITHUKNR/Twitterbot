@@ -94,7 +94,7 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (Updated: No Jagiya)
+# 💜 BTS CHARACTER PERSONAS
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
@@ -260,12 +260,11 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.edit_text(f"**{selected_char}** is online! 😍", parse_mode='Markdown')
         except Exception: await query.answer("Error.")
 
-# 🎮 GAME COMMAND & HANDLER 🎮
+# 🎮 GAME COMMAND & HANDLER (FIXED) 🎮
 async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🤔 Truth", callback_data='game_truth'), InlineKeyboardButton("🔥 Dare", callback_data='game_dare')]
     ]
-    # Changed Jagiya to Baby
     msg_text = "**Truth or Dare?** 😏 Pick one, Baby!"
     await update.message.reply_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -273,14 +272,13 @@ async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     choice = query.data
     
+    # 🌟 HERE IS THE FIX: Using edit_message_text replaces the buttons!
     if choice == 'game_truth':
         question = random.choice(TRUTH_QUESTIONS)
-        await query.answer("Truth selected! 🤔")
-        await query.message.reply_text(f"**TRUTH:**\n{question}", parse_mode='Markdown')
+        await query.edit_message_text(f"**TRUTH:**\n{question}", parse_mode='Markdown')
     elif choice == 'game_dare':
         task = random.choice(DARE_CHALLENGES)
-        await query.answer("Dare selected! 🔥")
-        await query.message.reply_text(f"**DARE:**\n{task}", parse_mode='Markdown')
+        await query.edit_message_text(f"**DARE:**\n{task}", parse_mode='Markdown')
 
 # --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -462,7 +460,6 @@ async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         users = db_collection_users.find({}, {'user_id': 1})
         for user in users:
-            # Changed Jagiya to My Love
             try: await context.bot.send_message(user['user_id'], "Good Morning, **My Love**! ☀️❤️ Have a beautiful day!", parse_mode='Markdown')
             except Exception: pass
 
