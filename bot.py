@@ -378,31 +378,54 @@ async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         await asyncio.sleep(0.1)
     await update.effective_message.reply_text(f"Removed {deleted} invalid files.")
 
+# 👑 IMPROVED ADMIN MENU (BUTTONS) 👑
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_TELEGRAM_ID: return
+    
     keyboard = [
         [InlineKeyboardButton("Users 👥", callback_data='admin_users'), InlineKeyboardButton("New Photo 📸", callback_data='admin_new_photo')],
-        [InlineKeyboardButton("Broadcast 📣", callback_data='admin_broadcast_text')],
-        [InlineKeyboardButton("Clean Media 🧹", callback_data='admin_clearmedia'), InlineKeyboardButton("Delete Old 🗑️", callback_data='admin_delete_old')]
+        [InlineKeyboardButton("Broadcast 📣", callback_data='admin_broadcast_text'), InlineKeyboardButton("Test Wish ☀️", callback_data='admin_test_wish')],
+        [InlineKeyboardButton("Clean Media 🧹", callback_data='admin_clearmedia'), InlineKeyboardButton("Delete Old 🗑️", callback_data='admin_delete_old')],
+        [InlineKeyboardButton("How to use File ID? 🆔", callback_data='admin_help_id')]
     ]
-    await update.message.reply_text("Admin Panel:", reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    await update.message.reply_text("👑 **Super Admin Panel:**\nSelect an option below:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    
+    # Character Selection
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
         return
+        
+    # Game Buttons
     if query.data.startswith("game_"):
         await game_handler(update, context)
         return
         
-    if query.from_user.id != ADMIN_TELEGRAM_ID: return
+    # Admin Controls (Only for Admin)
+    if query.from_user.id != ADMIN_TELEGRAM_ID: 
+        await query.answer("Admin only!", show_alert=True)
+        return
+
     await query.answer()
-    if query.data == 'admin_users': await user_count(query, context)
-    elif query.data == 'admin_new_photo': await send_new_photo(query, context)
-    elif query.data == 'admin_clearmedia': await clear_deleted_media(query, context)
-    elif query.data == 'admin_delete_old': await delete_old_media(query, context)
-    elif query.data == 'admin_broadcast_text': await context.bot.send_message(query.from_user.id, "Type /broadcast your_message")
+    
+    if query.data == 'admin_users': 
+        await user_count(query, context)
+    elif query.data == 'admin_new_photo': 
+        await send_new_photo(query, context)
+    elif query.data == 'admin_clearmedia': 
+        await clear_deleted_media(query, context)
+    elif query.data == 'admin_delete_old': 
+        await delete_old_media(query, context)
+    elif query.data == 'admin_broadcast_text': 
+        await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType /broadcast Your Message\nType /bmedia (as reply to photo)")
+    elif query.data == 'admin_test_wish':
+        await context.bot.send_message(query.from_user.id, "☀️ Testing Morning Wish...")
+        await send_morning_wish(context)
+    elif query.data == 'admin_help_id':
+        await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
@@ -456,7 +479,7 @@ async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if file_id:
             await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
 
-# 🌞 DAILY WISH SCHEDULER
+# 🌞 DAILY WISH SCHEDULER (IST)
 async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         users = db_collection_users.find({}, {'user_id': 1})
@@ -593,7 +616,8 @@ async def post_init(application: Application):
         BotCommand("game", "Truth or Dare 🎮"), 
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
-        BotCommand("allowmedia", "Allow Photos 🔔")
+        BotCommand("allowmedia", "Allow Photos 🔔"),
+        BotCommand("admin", "Admin Panel ⚙️")
     ]
     await application.bot.set_my_commands(commands)
     
