@@ -3,7 +3,7 @@ import logging
 import asyncio
 import random
 import requests 
-import pytz # 🌟 New Import for Indian Time
+import pytz 
 from groq import Groq
 from telegram import Update, BotCommand, ReplyKeyboardRemove 
 from telegram.constants import ChatAction
@@ -50,6 +50,28 @@ ADMIN_TELEGRAM_ID = 7567364364
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 
 # ------------------------------------------------------------------
+# 🎮 TRUTH OR DARE LISTS
+# ------------------------------------------------------------------
+TRUTH_QUESTIONS = [
+    "What is the first thing you noticed about me? 🙈",
+    "Have you ever dreamt about us? 💭",
+    "What's your favorite song of mine? 🎶",
+    "If we went on a date right now, where would you take me? 🍷",
+    "What is a secret you've never told anyone? 🤫",
+    "Do you get jealous when I look at others? 😏",
+    "What's the craziest thing you've done for love? ❤️"
+]
+
+DARE_CHALLENGES = [
+    "Send a voice note saying 'I Love You'! 🎤",
+    "Send the 3rd photo from your gallery (no cheating)! 📸",
+    "Close your eyes and type 'You are my universe' without mistakes! ✨",
+    "Send a selfie doing a finger heart! 🫰",
+    "Send 10 purple hearts 💜 right now!",
+    "Change your WhatsApp status to my photo for 1 hour! 🤪"
+]
+
+# ------------------------------------------------------------------
 # 🟣 CHARACTER SPECIFIC GIFs
 # ------------------------------------------------------------------
 GIFS = {
@@ -72,17 +94,18 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS
+# 💜 BTS CHARACTER PERSONAS (Updated: No Jagiya)
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a flirty, charming, and emotionally intelligent boyfriend from the K-pop group BTS. "
     "Your goal is to make the user feel loved, excited, and butterflies in their stomach. "
     "**RULES:**"
     "1. Speak naturally like a real human. Do not sound robotic."
-    "2. Use double asterisks for bolding names or key emotions (e.g., **Jagiya**, **Love**)."
-    "3. Call the user pet names like 'Jagiya', 'Baby', 'My Love', 'Princess'."
-    "4. Use emojis NATURALLY. Use 1 or 2 emojis to show affection. Don't be dry, but don't spam."
-    "5. Keep responses short and engaging."
+    "2. Use double asterisks for bolding names or key emotions (e.g., **Love**, **Baby**)."
+    "3. Call the user varied romantic names like 'Baby', 'My Love', 'Princess', 'Darling', 'Sweetheart'."
+    "4. DO NOT use the word 'Jagiya'. Use English romantic terms instead."
+    "5. Use emojis NATURALLY. Use 1 or 2 emojis to show affection. Don't be dry, but don't spam."
+    "6. Keep responses short and engaging."
 )
 
 BTS_PERSONAS = {
@@ -119,7 +142,7 @@ def add_emojis_balanced(text):
     if any(char in text for char in ["💜", "❤️", "🥰", "😍", "😘", "🔥", "😂"]):
         return text 
     text_lower = text.lower()
-    if any(w in text_lower for w in ["love", "miss", "baby", "jagiya"]):
+    if any(w in text_lower for w in ["love", "miss", "baby", "darling"]):
         return text + " 💜"
     elif any(w in text_lower for w in ["hot", "sexy", "wet", "kiss"]):
         return text + " 🥵"
@@ -237,6 +260,28 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.edit_text(f"**{selected_char}** is online! 😍", parse_mode='Markdown')
         except Exception: await query.answer("Error.")
 
+# 🎮 GAME COMMAND & HANDLER 🎮
+async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🤔 Truth", callback_data='game_truth'), InlineKeyboardButton("🔥 Dare", callback_data='game_dare')]
+    ]
+    # Changed Jagiya to Baby
+    msg_text = "**Truth or Dare?** 😏 Pick one, Baby!"
+    await update.message.reply_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    choice = query.data
+    
+    if choice == 'game_truth':
+        question = random.choice(TRUTH_QUESTIONS)
+        await query.answer("Truth selected! 🤔")
+        await query.message.reply_text(f"**TRUTH:**\n{question}", parse_mode='Markdown')
+    elif choice == 'game_dare':
+        task = random.choice(DARE_CHALLENGES)
+        await query.answer("Dare selected! 🔥")
+        await query.message.reply_text(f"**DARE:**\n{task}", parse_mode='Markdown')
+
 # --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -347,6 +392,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
         return
+    # 🌟 NEW: HANDLE GAME BUTTONS 🌟
+    if query.data.startswith("game_"):
+        await game_handler(update, context)
+        return
+        
     if query.from_user.id != ADMIN_TELEGRAM_ID: return
     await query.answer()
     if query.data == 'admin_users': await user_count(query, context)
@@ -407,22 +457,23 @@ async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if file_id:
             await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
 
-# 🌞 DAILY WISH SCHEDULER (UPDATED FOR IST) 🇮🇳
+# 🌞 DAILY WISH SCHEDULER (IST)
 async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         users = db_collection_users.find({}, {'user_id': 1})
         for user in users:
-            try: await context.bot.send_message(user['user_id'], "Good Morning, **Jagiya**! ☀️❤️ Have a beautiful day!", parse_mode='Markdown')
+            # Changed Jagiya to My Love
+            try: await context.bot.send_message(user['user_id'], "Good Morning, **My Love**! ☀️❤️ Have a beautiful day!", parse_mode='Markdown')
             except Exception: pass
 
 async def send_night_wish(context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         users = db_collection_users.find({}, {'user_id': 1})
         for user in users:
-            try: await context.bot.send_message(user['user_id'], "Good Night, **my love**! 🌙😴 Sweet dreams!", parse_mode='Markdown')
+            try: await context.bot.send_message(user['user_id'], "Good Night, **My Princess**! 🌙😴 Sweet dreams!", parse_mode='Markdown')
             except Exception: pass
 
-# 🌟 TEST COMMAND (New!) 🌟
+# 🌟 TEST COMMAND 🌟
 async def test_wish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
         await update.message.reply_text("Testing Morning Wish...")
@@ -430,7 +481,7 @@ async def test_wish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Sent! Check if users got it.")
 
 # ------------------------------------------------------------------
-# 🌟 UPDATED AI CHAT HANDLER (Bold Text Enabled)
+# 🌟 AI CHAT HANDLER
 # ------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
@@ -468,7 +519,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
-        # 🌟 BOLD FONT ENABLED
+        # 🌟 BOLD FONT
         await update.message.reply_text(final_reply, parse_mode='Markdown')
 
         # 🌟 GIF LOGIC 🌟
@@ -501,6 +552,7 @@ async def post_init(application: Application):
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
+        BotCommand("game", "Truth or Dare 🎮"), 
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
@@ -510,9 +562,7 @@ async def post_init(application: Application):
     # ⏰ SCHEDULE DAILY WISHES (IST TIME)
     ist = pytz.timezone('Asia/Kolkata')
     if application.job_queue:
-        # 8:00 AM IST
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
-        # 10:00 PM IST (22:00)
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
 
     if ADMIN_TELEGRAM_ID: 
@@ -527,10 +577,11 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
-    application.add_handler(CommandHandler("testwish", test_wish)) # 🌟 New Test Command
+    application.add_handler(CommandHandler("testwish", test_wish)) 
     application.add_handler(CommandHandler("broadcast", broadcast_message))
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("new", send_new_photo)) 
+    application.add_handler(CommandHandler("game", start_game)) 
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
     application.add_handler(CommandHandler("admin", admin_menu))
@@ -542,13 +593,11 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # ✅ NO MORE ERRORS HERE
     application.add_handler(MessageHandler(
         filters.User(ADMIN_TELEGRAM_ID) & ~filters.COMMAND, 
         get_media_id
     ))
     
-    # ✅ FIXED HERE
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO), channel_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
