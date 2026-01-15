@@ -438,21 +438,36 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception: pass
         await update.effective_message.reply_text(f"Sent to {len(users)} users.")
 
+# 🌟 FIXED /bmedia BROADCAST LOGIC 🌟
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+    
     reply = update.message.reply_to_message
-    if not reply: return
+    if not reply:
+        await update.message.reply_text("❌ **Error:** Please reply to a photo or video with /bmedia.")
+        return
+
     file_id = reply.photo[-1].file_id if reply.photo else reply.video.file_id if reply.video else None
-    if not file_id: return
+    
+    if not file_id:
+        await update.message.reply_text("❌ **Error:** No media found in the replied message.")
+        return
+
+    await update.message.reply_text("⏳ **Broadcasting Media...** This may take some time.")
+    
     caption = " ".join(context.args) or "Special Update! 💜"
+    
     if establish_db_connection():
         users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
+        sent_count = 0
         for uid in users:
             try: 
                 if reply.photo: await context.bot.send_photo(uid, file_id, caption=caption, protect_content=True)
                 else: await context.bot.send_video(uid, file_id, caption=caption, protect_content=True)
+                sent_count += 1
             except Exception: pass
-        await update.effective_message.reply_text("Media broadcast sent.")
+        
+        await update.message.reply_text(f"✅ **Broadcast Complete!**\nSent to {sent_count} users.")
 
 # 🌟 ULTIMATE MEDIA ID FINDER 🌟
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -610,14 +625,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
+    # Removed 'admin' from menu to hide it from users
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
         BotCommand("game", "Truth or Dare 🎮"), 
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
-        BotCommand("allowmedia", "Allow Photos 🔔"),
-        BotCommand("admin", "Admin Panel ⚙️")
+        BotCommand("allowmedia", "Allow Photos 🔔")
     ]
     await application.bot.set_my_commands(commands)
     
