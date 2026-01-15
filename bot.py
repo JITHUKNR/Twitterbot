@@ -213,10 +213,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if establish_db_connection():
         try:
+            # 🌟 UPDATE LAST SEEN ON START
             db_collection_users.update_one(
                 {'user_id': user_id},
-                {'$set': {'first_name': user_name, 'joined_at': datetime.now(timezone.utc)},
-                 '$setOnInsert': {'allow_media': True, 'character': 'TaeKook'}},
+                {
+                    '$set': {
+                        'first_name': user_name, 
+                        'last_seen': datetime.now(timezone.utc), # Track Time
+                        'notified_24h': False # Reset Notification
+                    },
+                    '$setOnInsert': {'joined_at': datetime.now(timezone.utc), 'allow_media': True, 'character': 'TaeKook'}
+                },
                 upsert=True
             )
         except Exception: pass
@@ -260,7 +267,7 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.edit_text(f"**{selected_char}** is online! 😍", parse_mode='Markdown')
         except Exception: await query.answer("Error.")
 
-# 🎮 GAME COMMAND & HANDLER (FIXED) 🎮
+# 🎮 GAME COMMAND & HANDLER 🎮
 async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🤔 Truth", callback_data='game_truth'), InlineKeyboardButton("🔥 Dare", callback_data='game_dare')]
@@ -272,7 +279,6 @@ async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     choice = query.data
     
-    # 🌟 HERE IS THE FIX: Using edit_message_text replaces the buttons!
     if choice == 'game_truth':
         question = random.choice(TRUTH_QUESTIONS)
         await query.edit_message_text(f"**TRUTH:**\n{question}", parse_mode='Markdown')
@@ -477,6 +483,44 @@ async def test_wish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_morning_wish(context)
         await update.message.reply_text("Sent! Check if users got it.")
 
+# 🔔 CHECK INACTIVITY AND SEND AI MESSAGE 🔔
+async def check_inactivity(context: ContextTypes.DEFAULT_TYPE):
+    if not establish_db_connection(): return
+    
+    current_time = datetime.now(timezone.utc)
+    threshold_time = current_time - timedelta(hours=24)
+    
+    users = db_collection_users.find({
+        'last_seen': {'$lt': threshold_time},
+        'notified_24h': {'$ne': True}
+    })
+    
+    for user in users:
+        try:
+            # 1. Get User's Character from DB
+            selected_char = user.get('character', 'TaeKook')
+            system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
+            
+            # 2. Ask AI to generate a message based on that Character
+            prompt = "The user hasn't messaged you in 24 hours. Send a short, engaging, 1-sentence text (flirty/caring/possessive) to make them reply. Don't use 'Jagiya'."
+            
+            completion = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ], 
+                model="llama-3.1-8b-instant"
+            )
+            msg = completion.choices[0].message.content.strip()
+            
+            # 3. Send AI Message
+            await context.bot.send_message(user['user_id'], msg, parse_mode='Markdown')
+            
+            # 4. Update Flag
+            db_collection_users.update_one({'_id': user['_id']}, {'$set': {'notified_24h': True}})
+        except Exception:
+            pass
+
 # ------------------------------------------------------------------
 # 🌟 AI CHAT HANDLER
 # ------------------------------------------------------------------
@@ -484,6 +528,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
     user_id = update.message.from_user.id
     user_text = update.message.text
+    
+    # 🌟 UPDATE ACTIVITY TIMESTAMP WHEN USER CHATS 🌟
+    if establish_db_connection():
+         db_collection_users.update_one(
+            {'user_id': user_id},
+            {'$set': {'last_seen': datetime.now(timezone.utc), 'notified_24h': False}},
+            upsert=True
+        )
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
@@ -561,6 +613,9 @@ async def post_init(application: Application):
     if application.job_queue:
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
+        
+        # 🔔 CHECK INACTIVITY EVERY HOUR 🔔
+        application.job_queue.run_repeating(check_inactivity, interval=3600, first=60)
 
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
