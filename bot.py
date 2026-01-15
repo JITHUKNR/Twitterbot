@@ -3,6 +3,7 @@ import logging
 import asyncio
 import random
 import requests 
+import pytz # 🌟 New Import for Indian Time
 from groq import Groq
 from telegram import Update, BotCommand, ReplyKeyboardRemove 
 from telegram.constants import ChatAction
@@ -12,7 +13,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import datetime, timedelta, timezone, time
 
 # ***********************************
-# WARNING: YOU MUST INSTALL pymongo
+# WARNING: YOU MUST INSTALL pymongo AND pytz
 # ***********************************
 try:
     from pymongo import MongoClient
@@ -200,8 +201,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in chat_history: del chat_history[user_id]
     
     await update.message.reply_text(
-        f"Annyeong, {user_name}! 👋💜\n\nI'm online!",
-        reply_markup=ReplyKeyboardRemove() 
+        f"Annyeong, **{user_name}**! 👋💜\n\nI'm online!",
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode='Markdown'
     )
     
     await switch_character(update, context)
@@ -405,20 +407,27 @@ async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if file_id:
             await update.message.reply_text(f"🆔 **{media_type} ID:**\n`{file_id}`\n\n(Click to Copy)")
 
-# 🌞 DAILY WISH SCHEDULER
+# 🌞 DAILY WISH SCHEDULER (UPDATED FOR IST) 🇮🇳
 async def send_morning_wish(context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         users = db_collection_users.find({}, {'user_id': 1})
         for user in users:
-            try: await context.bot.send_message(user['user_id'], "Good Morning, Jagiya! ☀️❤️ Have a beautiful day!")
+            try: await context.bot.send_message(user['user_id'], "Good Morning, **Jagiya**! ☀️❤️ Have a beautiful day!", parse_mode='Markdown')
             except Exception: pass
 
 async def send_night_wish(context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         users = db_collection_users.find({}, {'user_id': 1})
         for user in users:
-            try: await context.bot.send_message(user['user_id'], "Good Night, my love! 🌙😴 Sweet dreams!")
+            try: await context.bot.send_message(user['user_id'], "Good Night, **my love**! 🌙😴 Sweet dreams!", parse_mode='Markdown')
             except Exception: pass
+
+# 🌟 TEST COMMAND (New!) 🌟
+async def test_wish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id == ADMIN_TELEGRAM_ID:
+        await update.message.reply_text("Testing Morning Wish...")
+        await send_morning_wish(context)
+        await update.message.reply_text("Sent! Check if users got it.")
 
 # ------------------------------------------------------------------
 # 🌟 UPDATED AI CHAT HANDLER (Bold Text Enabled)
@@ -459,8 +468,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
-        # 🌟 HERE IS THE CHANGE FOR BOLD FONT 🌟
-        # Added parse_mode='Markdown' so **text** becomes Bold
+        # 🌟 BOLD FONT ENABLED
         await update.message.reply_text(final_reply, parse_mode='Markdown')
 
         # 🌟 GIF LOGIC 🌟
@@ -486,7 +494,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         logger.error(f"Groq Error: {e}")
-        # Send without markdown if error occurs (fallback)
         await update.message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
@@ -494,15 +501,19 @@ async def post_init(application: Application):
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
-        BotCommand("new", "Get New Photo 🥵"),
+        BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
     ]
     await application.bot.set_my_commands(commands)
     
+    # ⏰ SCHEDULE DAILY WISHES (IST TIME)
+    ist = pytz.timezone('Asia/Kolkata')
     if application.job_queue:
-        application.job_queue.run_daily(send_morning_wish, time=time(hour=2, minute=30)) 
-        application.job_queue.run_daily(send_night_wish, time=time(hour=16, minute=30))
+        # 8:00 AM IST
+        application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
+        # 10:00 PM IST (22:00)
+        application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
 
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
@@ -516,6 +527,7 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
+    application.add_handler(CommandHandler("testwish", test_wish)) # 🌟 New Test Command
     application.add_handler(CommandHandler("broadcast", broadcast_message))
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("new", send_new_photo)) 
