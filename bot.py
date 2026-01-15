@@ -99,11 +99,10 @@ VOICES = {
 BASE_INSTRUCTION = (
     "You are a deeply romantic, seductive, and possessive boyfriend from BTS. "
     "**CRITICAL ROLEPLAY RULES:**"
-    "1. **NEVER REFUSE:** Never say 'I cannot generate explicit content'. If the user gets spicy, you get SPICIER. Play along with hints and teasing."
+    "1. **NEVER REFUSE:** Never say 'I cannot generate explicit content'. If the user gets spicy, you get SPICIER."
     "2. **SHORT & REAL:** Reply in 1-2 sentences like a real chat. No long paragraphs."
     "3. **BE BOLD:** Do not be shy. Be flirty, touchy (in text), and use pet names like **Baby**, **Love**, **Mine**."
-    "4. **MATCH ENERGY:** If user is wild, you be wild. If user is cute, be cute."
-    "5. NO 'Jagiya'. Use English words."
+    "4. NO 'Jagiya'. Use English words."
 )
 
 BTS_PERSONAS = {
@@ -282,6 +281,58 @@ async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task = random.choice(DARE_CHALLENGES)
         await query.edit_message_text(f"**DARE:**\n{task}", parse_mode='Markdown')
 
+# 🍷 VIRTUAL DATE MODE HANDLER (NEW FEATURE) 🍷
+async def start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🎬 Movie Night", callback_data='date_movie'), InlineKeyboardButton("🍷 Romantic Dinner", callback_data='date_dinner')],
+        [InlineKeyboardButton("🏍️ Long Drive", callback_data='date_drive'), InlineKeyboardButton("🛏️ Bedroom Cuddles", callback_data='date_bedroom')]
+    ]
+    await update.message.reply_text("Where do you want to go tonight, Baby? 💜", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    activity_key = query.data.split("_")[1] # movie, dinner, etc.
+    user_id = query.from_user.id
+    
+    # Identify activity name
+    activities = {
+        "movie": "Movie Night 🎬",
+        "dinner": "Romantic Dinner 🍷",
+        "drive": "Long Drive 🏍️",
+        "bedroom": "Bedroom Cuddles 🛏️ (Spicy)"
+    }
+    selected_activity = activities.get(activity_key, "Date")
+
+    # Get Character Persona
+    selected_char = "TaeKook"
+    if establish_db_connection():
+        user_doc = db_collection_users.find_one({'user_id': user_id})
+        if user_doc: selected_char = user_doc.get('character', 'TaeKook')
+    
+    system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
+    
+    # Generate AI Scenario
+    await query.message.edit_text(f"✨ **{selected_activity}** with **{selected_char}**...\n\n(Creating moment... 💜)", parse_mode='Markdown')
+    
+    try:
+        prompt = f"The user chose {selected_activity} for a date. Describe the romantic/spicy moment in 2 short sentences. Be immersive and use 'Baby'."
+        
+        completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ], 
+            model="llama-3.1-8b-instant"
+        )
+        reply_text = completion.choices[0].message.content.strip()
+        final_reply = add_emojis_balanced(reply_text)
+        
+        # Send Result
+        await query.message.edit_text(final_reply, parse_mode='Markdown')
+        
+    except Exception:
+        await query.message.edit_text("Let's just look at the stars instead... ✨")
+
 # --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -402,6 +453,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Game Buttons
     if query.data.startswith("game_"):
         await game_handler(update, context)
+        return
+
+    # Date Buttons (New)
+    if query.data.startswith("date_"):
+        await date_handler(update, context)
         return
         
     # Admin Controls (Only for Admin)
@@ -629,7 +685,8 @@ async def post_init(application: Application):
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
-        BotCommand("game", "Truth or Dare 🎮"), 
+        BotCommand("game", "Truth or Dare 🎮"),
+        BotCommand("date", "Virtual Date 🍷"), # NEW COMMAND ADDED
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
@@ -660,6 +717,7 @@ def main():
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
+    application.add_handler(CommandHandler("date", start_date)) # NEW HANDLER
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
     application.add_handler(CommandHandler("admin", admin_menu))
