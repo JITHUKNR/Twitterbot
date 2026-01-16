@@ -4,6 +4,7 @@ import asyncio
 import random
 import requests 
 import pytz 
+import urllib.parse 
 from groq import Groq
 from telegram import Update, BotCommand, ReplyKeyboardRemove 
 from telegram.constants import ChatAction
@@ -94,7 +95,7 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (UPDATED: SMART & SPICY)
+# 💜 BTS CHARACTER PERSONAS
 # ------------------------------------------------------------------
 BASE_INSTRUCTION = (
     "You are a boyfriend from BTS. "
@@ -138,10 +139,8 @@ except Exception as e:
 def add_emojis_balanced(text):
     if any(char in text for char in ["💜", "❤️", "🥰", "😍", "😘", "🔥", "😂"]):
         return text 
-    # Don't add emojis to very short texts to keep it cool
     if len(text.split()) < 4:
         return text
-        
     text_lower = text.lower()
     if any(w in text_lower for w in ["love", "miss", "baby", "darling"]):
         return text + " 💜"
@@ -295,7 +294,7 @@ async def start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    activity_key = query.data.split("_")[1] # movie, dinner, etc.
+    activity_key = query.data.split("_")[1]
     user_id = query.from_user.id
     
     activities = {
@@ -328,11 +327,37 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_text = completion.choices[0].message.content.strip()
         final_reply = add_emojis_balanced(reply_text)
         
-        # Send Result
         await query.message.edit_text(final_reply, parse_mode='Markdown')
         
     except Exception:
         await query.message.edit_text("Let's just look at the stars instead... ✨")
+
+# 📸 IMAGINE MODE HANDLER (NEW FEATURE) 📸
+async def imagine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_prompt = " ".join(context.args)
+    
+    if not user_prompt:
+        await update.message.reply_text("Tell me what to imagine! Example:\n`/imagine Jungkook in rain`", parse_mode='Markdown')
+        return
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
+    
+    # Enhance prompt for better results
+    enhanced_prompt = f"{user_prompt}, realistic, 8k, high quality, cinematic lighting"
+    encoded_prompt = urllib.parse.quote(enhanced_prompt)
+    
+    # Using Pollinations AI (Free, No Key)
+    seed = random.randint(0, 100000)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
+    
+    try:
+        await update.message.reply_photo(
+            photo=image_url,
+            caption=f"✨ **Imagine:** {user_prompt}\n💜 Generated for you.",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        await update.message.reply_text("Oops! I couldn't paint that. Try something else? 🥺")
 
 # --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -650,6 +675,7 @@ async def post_init(application: Application):
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
         BotCommand("game", "Truth or Dare 🎮"),
+        BotCommand("imagine", "Create Photo 📸"), # NEW COMMAND ADDED
         BotCommand("date", "Virtual Date 🍷"),
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
@@ -681,6 +707,7 @@ def main():
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
     application.add_handler(CommandHandler("date", start_date))
+    application.add_handler(CommandHandler("imagine", imagine_command)) # NEW HANDLER ADDED
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
     application.add_handler(CommandHandler("admin", admin_menu))
