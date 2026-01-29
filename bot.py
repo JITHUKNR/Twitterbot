@@ -95,7 +95,7 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
-# 📸 FAKE STATUS UPDATES (NEW FEATURE)
+# 📸 FAKE STATUS UPDATES
 # ------------------------------------------------------------------
 STATUS_SCENARIOS = [
     {"prompt": "Korean boy gym selfie mirror workout sweat realistic", "caption": "Done with workout. My muscles hurt... massage me? 🥵💪"},
@@ -124,7 +124,7 @@ COMMON_RULES = (
     "Roleplay as a BTS boyfriend. "
     "**RULES:**"
     "1. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
-    "2. **CHAI MODE:** You are in a specific scenario. Stay in character. If the scenario is 'Jealous', act jealous."
+    "2. **CHAI MODE:** You are in a specific scenario. Stay in character."
     "3. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
     "4. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
 )
@@ -154,8 +154,8 @@ try:
     if not GROQ_API_KEY: raise ValueError("GROQ_API_KEY is not set.")
     groq_client = Groq(api_key=GROQ_API_KEY)
     chat_history = {} 
-    last_user_message = {} # To store for regeneration
-    current_scenario = {} # To store active scenario
+    last_user_message = {} 
+    current_scenario = {} 
     logger.info("Groq AI client loaded successfully.")
 except Exception as e:
     logger.error(f"Groq AI setup failed: {e}")
@@ -246,7 +246,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         'last_seen': datetime.now(timezone.utc), 
                         'notified_24h': False 
                     },
-                    '$setOnInsert': {'joined_at': datetime.now(timezone.utc), 'allow_media': True, 'character': 'TaeKook'}
+                    '$setOnInsert': {'joined_at': datetime.now(timezone.utc), 'allow_media': True, 'character': 'TaeKook', 'user_persona': 'A girl'}
                 },
                 upsert=True
             )
@@ -272,7 +272,7 @@ async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg_text, reply_markup=bts_buttons)
 
-# 🎭 CHAI STYLE: PLOT SELECTION 🎭
+# 🎭 CHAI STYLE: PLOT SELECTION (UPDATED) 🎭
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -283,15 +283,15 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.answer(f"Selected {selected_char}! 💜")
     
-    # Show Scenarios (Moods)
+    # Updated Menu with Custom Story
     keyboard = [
         [InlineKeyboardButton("🥰 Soft Romance", callback_data='plot_Romantic'), InlineKeyboardButton("😡 Jealousy", callback_data='plot_Jealous')],
         [InlineKeyboardButton("⚔️ Enemy/Hate", callback_data='plot_Enemy'), InlineKeyboardButton("🕶️ Mafia Boss", callback_data='plot_Mafia')],
-        [InlineKeyboardButton("🤗 Comfort Me", callback_data='plot_Comfort')]
+        [InlineKeyboardButton("🤗 Comfort Me", callback_data='plot_Comfort'), InlineKeyboardButton("📝 Make Own Story", callback_data='plot_Custom')]
     ]
     
     await query.message.edit_text(
-        f"**{selected_char}** is ready. But... what's the vibe? 😏\n\nSelect a scenario to start the story:",
+        f"**{selected_char}** is ready. But... what's the vibe? 😏\n\nSelect a scenario:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -301,25 +301,32 @@ async def set_plot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     plot_key = query.data.split("_")[1]
     
+    if plot_key == "Custom":
+        current_scenario[user_id] = "WAITING_FOR_PLOT"
+        await query.message.edit_text("📝 **Custom Story Mode**\n\nType the plot/scenario you want to play now.\nExample: *We are trapped in an elevator.*")
+        return
+
     current_scenario[user_id] = SCENARIOS.get(plot_key, "Just chatting.")
-    
+    await start_roleplay_with_plot(update, context, user_id)
+
+async def start_roleplay_with_plot(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id):
     selected_char = "TaeKook"
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
         if user_doc: selected_char = user_doc.get('character', 'TaeKook')
     
-    # Clear history to start new plot
     if user_id in chat_history: del chat_history[user_id]
     
-    # 🌟 BOT STARTS FIRST (CHAI STYLE) 🌟
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     system_prompt += f" SCENARIO: {current_scenario[user_id]}"
     
     start_prompt = f"Start the roleplay based on the scenario: '{current_scenario[user_id]}'. Send the first message to the user now. Be immersive."
     
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-    
+    # If called from callback, use query message, else use context bot
     try:
+        chat_id = update.effective_chat.id
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        
         completion = groq_client.chat.completions.create(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": start_prompt}], 
             model="llama-3.1-8b-instant"
@@ -329,10 +336,25 @@ async def set_plot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         chat_history[user_id] = [{"role": "system", "content": system_prompt}, {"role": "assistant", "content": final_msg}]
         
-        await query.message.edit_text(f"✨ **Story Started:** {plot_key}\n\n" + final_msg, parse_mode='Markdown')
+        await context.bot.send_message(chat_id, f"✨ **Story Started!**\n\n{final_msg}", parse_mode='Markdown')
         
     except Exception:
-        await query.message.edit_text("Ready! You can start chatting now. 💜")
+        await context.bot.send_message(chat_id, "Ready! You can start chatting now. 💜")
+
+# 👤 USER PERSONA COMMAND 👤
+async def set_persona_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    persona_text = " ".join(context.args)
+    
+    if not persona_text:
+        await update.message.reply_text("Tell me who you are! Example:\n`/setme I am your angry boss`", parse_mode='Markdown')
+        return
+
+    if establish_db_connection():
+        db_collection_users.update_one({'user_id': user_id}, {'$set': {'user_persona': persona_text}})
+        # Reset chat to apply new persona
+        if user_id in chat_history: del chat_history[user_id]
+        await update.message.reply_text(f"✅ **Persona Set:** You are now '{persona_text}'\n\n(Chat history cleared to apply change!)")
 
 async def regenerate_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -344,7 +366,6 @@ async def regenerate_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.answer("Regenerating... 🔄")
     
-    # Remove last assistant message
     if chat_history[user_id] and chat_history[user_id][-1]['role'] == 'assistant':
         chat_history[user_id].pop()
         
@@ -486,14 +507,12 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: await message_obj.reply_text("No media found.")
     except Exception: await message_obj.reply_text("Error sending media.")
 
-# 🆕 FAKE STATUS UPDATE JOB (Daily at 5:30 PM) 🆕
+# 🆕 FAKE STATUS UPDATE JOB
 async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection(): return
     
-    # Pick a random scenario
     scenario = random.choice(STATUS_SCENARIOS)
     
-    # Generate fake selfie using Pollinations
     enhanced_prompt = scenario['prompt']
     encoded_prompt = urllib.parse.quote(enhanced_prompt)
     seed = random.randint(0, 100000)
@@ -559,7 +578,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("Users 👥", callback_data='admin_users'), InlineKeyboardButton("New Photo 📸", callback_data='admin_new_photo')],
-        [InlineKeyboardButton("Broadcast 📣", callback_data='admin_broadcast_text'), InlineKeyboardButton("Test Wish ☀️", callback_data='admin_test_wish')],
+        [InlineKeyboardButton("Broadcast 📣", callback_data='admin_broadcast_help'), InlineKeyboardButton("Test Wish ☀️", callback_data='admin_test_wish')],
         [InlineKeyboardButton("Clean Media 🧹", callback_data='admin_clearmedia'), InlineKeyboardButton("Delete Old 🗑️", callback_data='admin_delete_old')],
         [InlineKeyboardButton("How to use File ID? 🆔", callback_data='admin_help_id')]
     ]
@@ -599,46 +618,73 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_new_photo': await send_new_photo(query, context)
     elif query.data == 'admin_clearmedia': await clear_deleted_media(query, context)
     elif query.data == 'admin_delete_old': await delete_old_media(query, context)
-    elif query.data == 'admin_broadcast_text': await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType /broadcast Your Message\nType /bmedia (as reply to photo)")
+    elif query.data == 'admin_broadcast_help': 
+        await context.bot.send_message(query.from_user.id, "📢 **Broadcast Guide:**\n\n1. Send/Reply to a Photo/Video/Text.\n2. Type `/broadcast Caption | Button-Link`\n\nExample:\n`/broadcast Check this! | Join-https://t.me/test`", parse_mode='Markdown')
     elif query.data == 'admin_test_wish':
         await context.bot.send_message(query.from_user.id, "☀️ Testing Morning Wish...")
         await send_morning_wish(context)
     elif query.data == 'admin_help_id':
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
-async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 📢 SUPER BROADCAST COMMAND (MEDIA + BUTTONS) 📢
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
-    msg = update.effective_message.text.replace('/broadcast', '').strip()
-    if not msg: return
-    if establish_db_connection():
-        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-        for uid in users:
-            try: await context.bot.send_message(uid, f"📢 **Chai Update:**\n{msg}")
-            except Exception: pass
-        await update.effective_message.reply_text(f"Sent to {len(users)} users.")
+    
+    message = update.message
+    reply = message.reply_to_message
+    args_text = message.text.replace('/broadcast', '').strip()
+    
+    # 1. IDENTIFY MEDIA
+    file_id = None
+    file_type = None
+    
+    if reply:
+        if reply.photo:
+            file_id = reply.photo[-1].file_id
+            file_type = 'photo'
+        elif reply.video:
+            file_id = reply.video.file_id
+            file_type = 'video'
+    
+    # 2. PARSE CAPTION & BUTTONS (Format: Caption | Btn1-Link1 | Btn2-Link2)
+    caption = args_text
+    reply_markup = None
+    
+    if "|" in args_text:
+        parts = args_text.split("|")
+        caption = parts[0].strip()
+        buttons_list = []
+        
+        for btn_part in parts[1:]:
+            if "-" in btn_part:
+                btn_txt, btn_url = btn_part.split("-", 1)
+                buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
+        
+        if buttons_list:
+            reply_markup = InlineKeyboardMarkup(buttons_list)
+    
+    # 3. SEND TO ALL USERS
+    if not establish_db_connection(): 
+        await message.reply_text("DB Error.")
+        return
 
-async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
-    reply = update.message.reply_to_message
-    if not reply:
-        await update.message.reply_text("❌ **Error:** Please reply to a photo or video with /bmedia.")
-        return
-    file_id = reply.photo[-1].file_id if reply.photo else reply.video.file_id if reply.video else None
-    if not file_id:
-        await update.message.reply_text("❌ **Error:** No media found in the replied message.")
-        return
-    await update.message.reply_text("⏳ **Broadcasting Media...** This may take some time.")
-    caption = " ".join(context.args) or "Special Update! 💜"
-    if establish_db_connection():
-        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-        sent_count = 0
-        for uid in users:
-            try: 
-                if reply.photo: await context.bot.send_photo(uid, file_id, caption=caption, protect_content=True)
-                else: await context.bot.send_video(uid, file_id, caption=caption, protect_content=True)
-                sent_count += 1
-            except Exception: pass
-        await update.message.reply_text(f"✅ **Broadcast Complete!**\nSent to {sent_count} users.")
+    users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
+    sent_count = 0
+    await message.reply_text(f"⏳ **Broadcasting to {len(users)} users...**")
+    
+    for uid in users:
+        try:
+            if file_type == 'photo':
+                await context.bot.send_photo(uid, file_id, caption=caption, reply_markup=reply_markup, parse_mode='Markdown')
+            elif file_type == 'video':
+                await context.bot.send_video(uid, file_id, caption=caption, reply_markup=reply_markup, parse_mode='Markdown')
+            elif caption: # Text Only
+                await context.bot.send_message(uid, caption, reply_markup=reply_markup, parse_mode='Markdown')
+            sent_count += 1
+        except Exception: pass
+        await asyncio.sleep(0.05) # Prevent flood wait
+        
+    await message.reply_text(f"✅ **Broadcast Done!**\nSent to {sent_count} users.")
 
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
@@ -705,6 +751,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             upsert=True
         )
     
+    # CHECK FOR CUSTOM PLOT INPUT
+    if user_id in current_scenario and current_scenario[user_id] == "WAITING_FOR_PLOT":
+        current_scenario[user_id] = user_text # Set the user input as scenario
+        await start_roleplay_with_plot(update, context, user_id)
+        return
+
     last_user_message[user_id] = user_text # Store for regeneration
     await generate_ai_response(update, context, user_text, is_regenerate=False)
 
@@ -715,13 +767,17 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     selected_char = "TaeKook" 
+    user_persona = "Unknown"
+    
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
-        if user_doc and 'character' in user_doc: selected_char = user_doc['character']
+        if user_doc: 
+            selected_char = user_doc.get('character', 'TaeKook')
+            user_persona = user_doc.get('user_persona', 'Unknown')
     
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     
-    # 🕒 1. TIME AWARENESS LOGIC 🕒
+    # 🕒 TIME AWARENESS LOGIC
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
     current_time_str = now.strftime("%I:%M %p")
@@ -734,6 +790,9 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     
     system_prompt += time_instruction
     
+    # 👤 USER PERSONA INJECTION
+    system_prompt += f" USER PERSONA: The user is '{user_persona}'. Treat them accordingly."
+
     # 🎲 RANDOM INNER THOUGHTS (30% CHANCE) 🎲
     if random.random() < 0.3:
         system_prompt += " INSTRUCTION: In this specific reply, include your secret inner thoughts using the format *(Thought: ...)*. Show your true hidden feelings."
@@ -790,6 +849,7 @@ async def post_init(application: Application):
         BotCommand("imagine", "Create Photo 📸"), 
         BotCommand("date", "Virtual Date 🍷"),
         BotCommand("new", "Get New Photo 📸"),
+        BotCommand("setme", "Set Persona 👤"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
     ]
@@ -800,7 +860,7 @@ async def post_init(application: Application):
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
         
-        # 🆕 4. FAKE STATUS UPDATE JOB (Every day at 5:30 PM) 🆕
+        # 🆕 4. FAKE STATUS UPDATE JOB (Daily at 5:30 PM)
         application.job_queue.run_daily(send_fake_status, time=time(hour=17, minute=30, tzinfo=ist))
         
         application.job_queue.run_repeating(check_inactivity, interval=3600, first=60)
@@ -818,12 +878,12 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("testwish", test_wish)) 
-    application.add_handler(CommandHandler("broadcast", broadcast_message))
-    application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
     application.add_handler(CommandHandler("date", start_date))
     application.add_handler(CommandHandler("imagine", imagine_command))
+    application.add_handler(CommandHandler("setme", set_persona_command))
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
     application.add_handler(CommandHandler("admin", admin_menu))
