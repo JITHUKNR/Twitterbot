@@ -486,7 +486,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: await message_obj.reply_text("No media found.")
     except Exception: await message_obj.reply_text("Error sending media.")
 
-# 🆕 FAKE STATUS UPDATE JOB 🆕
+# 🆕 FAKE STATUS UPDATE JOB (Daily at 5:30 PM) 🆕
 async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection(): return
     
@@ -733,7 +733,12 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         time_instruction += " It is morning. Be energetic and wish good morning if they haven't."
     
     system_prompt += time_instruction
-    # --------------------------------
+    
+    # 🎲 RANDOM INNER THOUGHTS (30% CHANCE) 🎲
+    if random.random() < 0.3:
+        system_prompt += " INSTRUCTION: In this specific reply, include your secret inner thoughts using the format *(Thought: ...)*. Show your true hidden feelings."
+    else:
+        system_prompt += " INSTRUCTION: Reply normally without inner thoughts. Just spoken text."
 
     # Inject current scenario if exists
     if user_id in current_scenario:
