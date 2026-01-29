@@ -95,6 +95,17 @@ VOICES = {
 }
 
 # ------------------------------------------------------------------
+# 📸 FAKE STATUS UPDATES (NEW FEATURE)
+# ------------------------------------------------------------------
+STATUS_SCENARIOS = [
+    {"prompt": "Korean boy gym selfie mirror workout sweat realistic", "caption": "Done with workout. My muscles hurt... massage me? 🥵💪"},
+    {"prompt": "Korean boy drinking coffee cafe aesthetic realistic", "caption": "Coffee tastes better when I think of you. ☕️🤎"},
+    {"prompt": "Korean boy recording studio singing mic realistic", "caption": "Recording a new song. It's about you. 🎶🎤"},
+    {"prompt": "Korean boy driving car night city lights realistic", "caption": "Late night drive. Wish you were in the passenger seat. 🌃🚗"},
+    {"prompt": "Korean boy cooking kitchen apron food realistic", "caption": "I made dinner! Come over quickly! 🍝👨‍🍳"}
+]
+
+# ------------------------------------------------------------------
 # 🎭 CHAI APP STYLE SCENARIOS (PLOTS)
 # ------------------------------------------------------------------
 SCENARIOS = {
@@ -475,6 +486,30 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: await message_obj.reply_text("No media found.")
     except Exception: await message_obj.reply_text("Error sending media.")
 
+# 🆕 FAKE STATUS UPDATE JOB 🆕
+async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
+    if not establish_db_connection(): return
+    
+    # Pick a random scenario
+    scenario = random.choice(STATUS_SCENARIOS)
+    
+    # Generate fake selfie using Pollinations
+    enhanced_prompt = scenario['prompt']
+    encoded_prompt = urllib.parse.quote(enhanced_prompt)
+    seed = random.randint(0, 100000)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
+    
+    users = db_collection_users.find({}, {'user_id': 1})
+    for user in users:
+        try: 
+            await context.bot.send_photo(
+                chat_id=user['user_id'],
+                photo=image_url,
+                caption=f"📸 **New Status Update:**\n\n{scenario['caption']}",
+                parse_mode='Markdown'
+            )
+        except Exception: pass
+
 async def run_hourly_cleanup(application: Application):
     await asyncio.sleep(300) 
     while True:
@@ -686,6 +721,20 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     
+    # 🕒 1. TIME AWARENESS LOGIC 🕒
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
+    current_time_str = now.strftime("%I:%M %p")
+    
+    time_instruction = f" CURRENT TIME: {current_time_str}."
+    if 0 <= now.hour < 5:
+        time_instruction += " It is late night. If they are awake, scold them gently to sleep. Ask why they are up."
+    elif 6 <= now.hour < 11:
+        time_instruction += " It is morning. Be energetic and wish good morning if they haven't."
+    
+    system_prompt += time_instruction
+    # --------------------------------
+
     # Inject current scenario if exists
     if user_id in current_scenario:
         system_prompt += f" CURRENT SCENARIO: {current_scenario[user_id]}"
@@ -745,6 +794,10 @@ async def post_init(application: Application):
     if application.job_queue:
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
+        
+        # 🆕 4. FAKE STATUS UPDATE JOB (Every day at 5:30 PM) 🆕
+        application.job_queue.run_daily(send_fake_status, time=time(hour=17, minute=30, tzinfo=ist))
+        
         application.job_queue.run_repeating(check_inactivity, interval=3600, first=60)
 
     if ADMIN_TELEGRAM_ID: 
