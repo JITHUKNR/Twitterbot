@@ -253,7 +253,7 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
             await collect_media(update, context) 
     except Exception: pass
 
-# --- Start Command ---
+# --- Start Command (Updated with Random Messages) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
@@ -276,8 +276,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
+    # 🌟 New Welcome Messages List 🌟
+    welcome_messages = [
+        f"Annyeong, **{user_name}**! 👋💜\nI was waiting for you!",
+        f"Hey **{user_name}**! Finally you're here! 😍",
+        f"Welcome back, **My Love**! ✨\nReady to talk?",
+        f"Oh, look who's here! **{user_name}**! 🥺💜",
+        f"Hello Princess **{user_name}**! 👑\nI missed you so much!"
+    ]
+    
     await update.message.reply_text(
-        f"Annyeong, **{user_name}**! 👋💜\n\nI'm online!",
+        random.choice(welcome_messages),
         reply_markup=ReplyKeyboardRemove(),
         parse_mode='Markdown'
     )
