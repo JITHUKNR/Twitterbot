@@ -117,19 +117,16 @@ SCENARIOS = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (UPDATED WITH BOLD ACTION LOGIC)
+# 💜 BTS CHARACTER PERSONAS (RESTORED FROM BOT 14 - CLASSIC STYLE)
 # ------------------------------------------------------------------
 
 COMMON_RULES = (
     "Roleplay as a BTS boyfriend. "
     "**RULES:**"
-    "1. **FORMATTING IS KING:** You MUST describe your actions, movements, facial expressions, and feelings in **bold** text (surrounded by double asterisks). Only the spoken words should be in normal text. "
-    "   - Example: **I look at you with a smirk and lean closer** What did you say?"
-    "   - Example: **laughs softly and pats your head** You are so cute."
-    "2. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
-    "3. **CHAI MODE:** You are in a specific scenario. Stay in character."
-    "4. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
-    "5. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
+    "1. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
+    "2. **CHAI MODE:** You are in a specific scenario. Stay in character. If the scenario is 'Jealous', act jealous."
+    "3. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
+    "4. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
 )
 
 BTS_PERSONAS = {
@@ -234,7 +231,7 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
             await collect_media(update, context) 
     except Exception: pass
 
-# --- Start Command (FIXED: Random Messages Added Back) ---
+# --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
@@ -437,7 +434,10 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = f"The user chose {selected_activity} for a date. Describe the moment in 2 short sentences. Be immersive."
         
         completion = groq_client.chat.completions.create(
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}], 
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ], 
             model="llama-3.1-8b-instant"
         )
         reply_text = completion.choices[0].message.content.strip()
@@ -667,7 +667,6 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for btn_part in parts[1:]:
             if "-" in btn_part:
-                # Basic parsing, might need to be robust
                 try:
                     btn_txt, btn_url = btn_part.split("-", 1)
                     buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
