@@ -231,7 +231,7 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
             await collect_media(update, context) 
     except Exception: pass
 
-# --- Start Command ---
+# --- Start Command (FIXED: Random Messages Added Back) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
@@ -254,8 +254,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
-    welcome_msg = f"Annyeong, **{user_name}**! 👋💜\nWho do you want to chat with today?"
-    await update.message.reply_text(welcome_msg, parse_mode='Markdown')
+    # 🌟 RANDOM WELCOME MESSAGES RESTORED! 🌟
+    welcome_messages = [
+        f"Annyeong, **{user_name}**! 👋💜\nWho do you want to chat with today?",
+        f"Hey **{user_name}**! Finally you're here! 😍\nPick your favorite boy:",
+        f"Welcome back, **My Love**! ✨\nReady to start a new story?",
+        f"Oh, look who's here! **{user_name}**! 🥺💜\nSelect your bias:",
+        f"Hello Princess **{user_name}**! 👑\nI missed you! Who do you want?"
+    ]
+    
+    await update.message.reply_text(
+        random.choice(welcome_messages),
+        parse_mode='Markdown'
+    )
+    
     await switch_character(update, context)
 
 async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -272,7 +284,7 @@ async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg_text, reply_markup=bts_buttons)
 
-# 🎭 CHAI STYLE: PLOT SELECTION (UPDATED) 🎭
+# 🎭 CHAI STYLE: PLOT SELECTION 🎭
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -422,10 +434,7 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = f"The user chose {selected_activity} for a date. Describe the moment in 2 short sentences. Be immersive."
         
         completion = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ], 
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}], 
             model="llama-3.1-8b-instant"
         )
         reply_text = completion.choices[0].message.content.strip()
@@ -505,12 +514,14 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: await message_obj.reply_text("No media found.")
     except Exception: await message_obj.reply_text("Error sending media.")
 
-# 🆕 FAKE STATUS UPDATE JOB
+# 🆕 FAKE STATUS UPDATE JOB (Daily at 5:30 PM) 🆕
 async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection(): return
     
+    # Pick a random scenario
     scenario = random.choice(STATUS_SCENARIOS)
     
+    # Generate fake selfie using Pollinations
     enhanced_prompt = scenario['prompt']
     encoded_prompt = urllib.parse.quote(enhanced_prompt)
     seed = random.randint(0, 100000)
@@ -910,3 +921,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+}
