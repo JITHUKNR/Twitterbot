@@ -117,16 +117,19 @@ SCENARIOS = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (UPDATED)
+# 💜 BTS CHARACTER PERSONAS (UPDATED WITH BOLD ACTION LOGIC)
 # ------------------------------------------------------------------
 
 COMMON_RULES = (
     "Roleplay as a BTS boyfriend. "
     "**RULES:**"
-    "1. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
-    "2. **CHAI MODE:** You are in a specific scenario. Stay in character."
-    "3. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
-    "4. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
+    "1. **FORMATTING IS KING:** You MUST describe your actions, movements, facial expressions, and feelings in **bold** text (surrounded by double asterisks). Only the spoken words should be in normal text. "
+    "   - Example: **I look at you with a smirk and lean closer** What did you say?"
+    "   - Example: **laughs softly and pats your head** You are so cute."
+    "2. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
+    "3. **CHAI MODE:** You are in a specific scenario. Stay in character."
+    "4. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
+    "5. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
 )
 
 BTS_PERSONAS = {
@@ -231,7 +234,7 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
             await collect_media(update, context) 
     except Exception: pass
 
-# --- Start Command (FIXED: Random Messages Added Back) ---
+# --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
@@ -295,7 +298,7 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.answer(f"Selected {selected_char}! 💜")
     
-    # Updated Menu with Custom Story
+    # Show Scenarios (Moods)
     keyboard = [
         [InlineKeyboardButton("🥰 Soft Romance", callback_data='plot_Romantic'), InlineKeyboardButton("😡 Jealousy", callback_data='plot_Jealous')],
         [InlineKeyboardButton("⚔️ Enemy/Hate", callback_data='plot_Enemy'), InlineKeyboardButton("🕶️ Mafia Boss", callback_data='plot_Mafia')],
@@ -303,7 +306,7 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
     ]
     
     await query.message.edit_text(
-        f"**{selected_char}** is ready. But... what's the vibe? 😏\n\nSelect a scenario:",
+        f"**{selected_char}** is ready. But... what's the vibe? 😏\n\nSelect a scenario to start the story:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -918,3 +921,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+}
