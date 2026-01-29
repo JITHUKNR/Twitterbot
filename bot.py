@@ -124,7 +124,7 @@ COMMON_RULES = (
     "Roleplay as a BTS boyfriend. "
     "**RULES:**"
     "1. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
-    "2. **CHAI MODE:** You are in a specific scenario. Stay in character. If the scenario is 'Jealous', act jealous."
+    "2. **CHAI MODE:** You are in a specific scenario. Stay in character."
     "3. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
     "4. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
 )
@@ -254,7 +254,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in chat_history: del chat_history[user_id]
     
-    # 🌟 RANDOM WELCOME MESSAGES RESTORED! 🌟
+    # 🌟 RANDOM WELCOME MESSAGES 🌟
     welcome_messages = [
         f"Annyeong, **{user_name}**! 👋💜\nWho do you want to chat with today?",
         f"Hey **{user_name}**! Finally you're here! 😍\nPick your favorite boy:",
@@ -514,14 +514,12 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: await message_obj.reply_text("No media found.")
     except Exception: await message_obj.reply_text("Error sending media.")
 
-# 🆕 FAKE STATUS UPDATE JOB (Daily at 5:30 PM) 🆕
+# 🆕 FAKE STATUS UPDATE JOB
 async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection(): return
     
-    # Pick a random scenario
     scenario = random.choice(STATUS_SCENARIOS)
     
-    # Generate fake selfie using Pollinations
     enhanced_prompt = scenario['prompt']
     encoded_prompt = urllib.parse.quote(enhanced_prompt)
     seed = random.randint(0, 100000)
@@ -855,16 +853,15 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def post_init(application: Application):
     commands = [
-        BotCommand("start", "Restart Bot 🔄"),
-        BotCommand("character", "Change Bias 💜"),
-        BotCommand("game", "Truth or Dare 🎮"),
-        BotCommand("imagine", "Create Photo 📸"), 
-        BotCommand("date", "Virtual Date 🍷"),
-        BotCommand("new", "Get New Photo 📸"),
-        BotCommand("setme", "Set Persona 👤"),
-        BotCommand("broadcast", "Admin Broadcast 📢"), # NEW COMMAND ADDED
-        BotCommand("stopmedia", "Stop Photos 🔕"),
-        BotCommand("allowmedia", "Allow Photos 🔔")
+        BotCommand("start", "🏠 Restart / Home"),
+        BotCommand("character", "💜 Change Character"),
+        BotCommand("setme", "👤 Set My Persona"),
+        BotCommand("imagine", "📸 Generate Image"),
+        BotCommand("game", "🎮 Play Game"),
+        BotCommand("date", "🍷 Virtual Date"),
+        BotCommand("new", "🖼 Random Photo"),
+        BotCommand("stopmedia", "🔕 Stop Daily Pics"),
+        BotCommand("allowmedia", "🔔 Allow Daily Pics")
     ]
     await application.bot.set_my_commands(commands)
     
@@ -921,5 +918,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-}
