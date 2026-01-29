@@ -124,7 +124,7 @@ COMMON_RULES = (
     "Roleplay as a BTS boyfriend. "
     "**RULES:**"
     "1. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
-    "2. **CHAI MODE:** You are in a specific scenario. Stay in character."
+    "2. **CHAI MODE:** You are in a specific scenario. Stay in character. If the scenario is 'Jealous', act jealous."
     "3. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
     "4. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
 )
@@ -322,7 +322,6 @@ async def start_roleplay_with_plot(update: Update, context: ContextTypes.DEFAULT
     
     start_prompt = f"Start the roleplay based on the scenario: '{current_scenario[user_id]}'. Send the first message to the user now. Be immersive."
     
-    # If called from callback, use query message, else use context bot
     try:
         chat_id = update.effective_chat.id
         await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
@@ -352,7 +351,6 @@ async def set_persona_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if establish_db_connection():
         db_collection_users.update_one({'user_id': user_id}, {'$set': {'user_persona': persona_text}})
-        # Reset chat to apply new persona
         if user_id in chat_history: del chat_history[user_id]
         await update.message.reply_text(f"✅ **Persona Set:** You are now '{persona_text}'\n\n(Chat history cleared to apply change!)")
 
@@ -657,8 +655,11 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for btn_part in parts[1:]:
             if "-" in btn_part:
-                btn_txt, btn_url = btn_part.split("-", 1)
-                buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
+                # Basic parsing, might need to be robust
+                try:
+                    btn_txt, btn_url = btn_part.split("-", 1)
+                    buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
+                except: pass
         
         if buttons_list:
             reply_markup = InlineKeyboardMarkup(buttons_list)
@@ -850,6 +851,7 @@ async def post_init(application: Application):
         BotCommand("date", "Virtual Date 🍷"),
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("setme", "Set Persona 👤"),
+        BotCommand("broadcast", "Admin Broadcast 📢"), # NEW COMMAND ADDED
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
     ]
@@ -878,7 +880,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("testwish", test_wish)) 
-    application.add_handler(CommandHandler("broadcast", broadcast_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command)) # NEW COMMAND
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
     application.add_handler(CommandHandler("date", start_date))
