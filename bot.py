@@ -234,7 +234,7 @@ async def channel_message_handler(update: Update, context: ContextTypes.DEFAULT_
             await collect_media(update, context) 
     except Exception: pass
 
-# --- Start Command ---
+# --- Start Command (FIXED: Random Messages Added Back) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
@@ -298,7 +298,7 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.answer(f"Selected {selected_char}! 💜")
     
-    # Show Scenarios (Moods)
+    # Updated Menu with Custom Story
     keyboard = [
         [InlineKeyboardButton("🥰 Soft Romance", callback_data='plot_Romantic'), InlineKeyboardButton("😡 Jealousy", callback_data='plot_Jealous')],
         [InlineKeyboardButton("⚔️ Enemy/Hate", callback_data='plot_Enemy'), InlineKeyboardButton("🕶️ Mafia Boss", callback_data='plot_Mafia')],
@@ -921,5 +921,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-}
