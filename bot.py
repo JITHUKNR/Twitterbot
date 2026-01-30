@@ -117,16 +117,17 @@ SCENARIOS = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (RESTORED FROM BOT 14 - CLASSIC STYLE)
+# 💜 BTS CHARACTER PERSONAS (PERFECT MIX: DESCRIPTIVE + BOLD ACTIONS)
 # ------------------------------------------------------------------
 
 COMMON_RULES = (
     "Roleplay as a BTS boyfriend. "
-    "**RULES:**"
-    "1. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
-    "2. **CHAI MODE:** You are in a specific scenario. Stay in character. If the scenario is 'Jealous', act jealous."
-    "3. **KEEP IT ALIVE:** If she sends short texts, tease her or act based on the scenario."
-    "4. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
+    "**INSTRUCTIONS:**"
+    "1. **FORMATTING:** You MUST describe your actions, feelings, and expressions in **bold text** (surrounded by double asterisks). Example: **I smile warmly and pull you closer**."
+    "2. **STYLE:** Be descriptive and immersive. Write like a story, explaining the atmosphere and your emotions in detail. Do NOT give short or dry replies."
+    "3. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
+    "4. **CHAI MODE:** Stay in character based on the scenario."
+    "5. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
 )
 
 BTS_PERSONAS = {
@@ -303,7 +304,7 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
     ]
     
     await query.message.edit_text(
-        f"**{selected_char}** is ready. But... what's the vibe? 😏\n\nSelect a scenario to start the story:",
+        f"**{selected_char}** is ready. But... what's the vibe? 😏\n\nSelect a scenario:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -588,7 +589,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("Users 👥", callback_data='admin_users'), InlineKeyboardButton("New Photo 📸", callback_data='admin_new_photo')],
-        [InlineKeyboardButton("Broadcast 📣", callback_data='admin_broadcast_help'), InlineKeyboardButton("Test Wish ☀️", callback_data='admin_test_wish')],
+        [InlineKeyboardButton("Broadcast 📣", callback_data='admin_broadcast_text'), InlineKeyboardButton("Test Wish ☀️", callback_data='admin_test_wish')],
         [InlineKeyboardButton("Clean Media 🧹", callback_data='admin_clearmedia'), InlineKeyboardButton("Delete Old 🗑️", callback_data='admin_delete_old')],
         [InlineKeyboardButton("How to use File ID? 🆔", callback_data='admin_help_id')]
     ]
@@ -628,75 +629,80 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_new_photo': await send_new_photo(query, context)
     elif query.data == 'admin_clearmedia': await clear_deleted_media(query, context)
     elif query.data == 'admin_delete_old': await delete_old_media(query, context)
-    elif query.data == 'admin_broadcast_help': 
-        await context.bot.send_message(query.from_user.id, "📢 **Broadcast Guide:**\n\n1. Send/Reply to a Photo/Video/Text.\n2. Type `/broadcast Caption | Button-Link`\n\nExample:\n`/broadcast Check this! | Join-https://t.me/test`", parse_mode='Markdown')
+    elif query.data == 'admin_broadcast_text': await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType /broadcast Your Message\nType /bmedia (as reply to photo)")
     elif query.data == 'admin_test_wish':
         await context.bot.send_message(query.from_user.id, "☀️ Testing Morning Wish...")
         await send_morning_wish(context)
     elif query.data == 'admin_help_id':
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
-# 📢 SUPER BROADCAST COMMAND (MEDIA + BUTTONS) 📢
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+    msg = update.effective_message.text.replace('/broadcast', '').strip()
+    if not msg: return
     
-    message = update.message
-    reply = message.reply_to_message
-    args_text = message.text.replace('/broadcast', '').strip()
-    
-    # 1. IDENTIFY MEDIA
-    file_id = None
-    file_type = None
-    
-    if reply:
-        if reply.photo:
-            file_id = reply.photo[-1].file_id
-            file_type = 'photo'
-        elif reply.video:
-            file_id = reply.video.file_id
-            file_type = 'video'
-    
-    # 2. PARSE CAPTION & BUTTONS (Format: Caption | Btn1-Link1 | Btn2-Link2)
-    caption = args_text
+    # Check for buttons (Caption | Button-Link)
     reply_markup = None
-    
-    if "|" in args_text:
-        parts = args_text.split("|")
-        caption = parts[0].strip()
+    if "|" in msg:
+        parts = msg.split("|")
+        msg = parts[0].strip()
         buttons_list = []
-        
         for btn_part in parts[1:]:
             if "-" in btn_part:
                 try:
                     btn_txt, btn_url = btn_part.split("-", 1)
                     buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
                 except: pass
-        
         if buttons_list:
             reply_markup = InlineKeyboardMarkup(buttons_list)
-    
-    # 3. SEND TO ALL USERS
-    if not establish_db_connection(): 
-        await message.reply_text("DB Error.")
-        return
 
-    users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-    sent_count = 0
-    await message.reply_text(f"⏳ **Broadcasting to {len(users)} users...**")
-    
-    for uid in users:
-        try:
-            if file_type == 'photo':
-                await context.bot.send_photo(uid, file_id, caption=caption, reply_markup=reply_markup, parse_mode='Markdown')
-            elif file_type == 'video':
-                await context.bot.send_video(uid, file_id, caption=caption, reply_markup=reply_markup, parse_mode='Markdown')
-            elif caption: # Text Only
-                await context.bot.send_message(uid, caption, reply_markup=reply_markup, parse_mode='Markdown')
-            sent_count += 1
-        except Exception: pass
-        await asyncio.sleep(0.05) # Prevent flood wait
+    if establish_db_connection():
+        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
+        for uid in users:
+            try: await context.bot.send_message(uid, f"📢 **Chai Update:**\n{msg}", reply_markup=reply_markup)
+            except Exception: pass
+        await update.effective_message.reply_text(f"Sent to {len(users)} users.")
+
+async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("❌ **Error:** Please reply to a photo or video with /bmedia.")
+        return
+    file_id = reply.photo[-1].file_id if reply.photo else reply.video.file_id if reply.video else None
+    if not file_id:
+        await update.message.reply_text("❌ **Error:** No media found in the replied message.")
+        return
         
-    await message.reply_text(f"✅ **Broadcast Done!**\nSent to {sent_count} users.")
+    await update.message.reply_text("⏳ **Broadcasting Media...** This may take some time.")
+    args_text = " ".join(context.args)
+    caption = args_text or "Special Update! 💜"
+    
+    # Button Parsing
+    reply_markup = None
+    if "|" in args_text:
+        parts = args_text.split("|")
+        caption = parts[0].strip()
+        buttons_list = []
+        for btn_part in parts[1:]:
+            if "-" in btn_part:
+                try:
+                    btn_txt, btn_url = btn_part.split("-", 1)
+                    buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
+                except: pass
+        if buttons_list:
+            reply_markup = InlineKeyboardMarkup(buttons_list)
+
+    if establish_db_connection():
+        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
+        sent_count = 0
+        for uid in users:
+            try: 
+                if reply.photo: await context.bot.send_photo(uid, file_id, caption=caption, reply_markup=reply_markup, protect_content=True)
+                else: await context.bot.send_video(uid, file_id, caption=caption, reply_markup=reply_markup, protect_content=True)
+                sent_count += 1
+            except Exception: pass
+        await update.message.reply_text(f"✅ **Broadcast Complete!**\nSent to {sent_count} users.")
 
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
@@ -891,6 +897,7 @@ def main():
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("testwish", test_wish)) 
     application.add_handler(CommandHandler("broadcast", broadcast_command)) # NEW COMMAND
+    application.add_handler(CommandHandler("bmedia", bmedia_broadcast)) # NEW COMMAND
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
     application.add_handler(CommandHandler("date", start_date))
