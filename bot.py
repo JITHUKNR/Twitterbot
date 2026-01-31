@@ -118,14 +118,14 @@ SCENARIOS = {
 }
 
 # ------------------------------------------------------------------
-# 💜 BTS CHARACTER PERSONAS (PERFECT MIX: DESCRIPTIVE + BOLD ACTIONS)
+# 💜 BTS CHARACTER PERSONAS (RESTORED CLASSIC BOLD STYLE)
 # ------------------------------------------------------------------
 
 COMMON_RULES = (
     "Roleplay as a BTS boyfriend. "
-    "**INSTRUCTIONS:**"
-    "1. **FORMATTING:** You MUST describe your actions, feelings, and expressions in **bold text** (surrounded by double asterisks). Example: **I smile warmly and pull you closer**."
-    "2. **STYLE:** Be descriptive and immersive. Write like a story, explaining the atmosphere and your emotions in detail. Do NOT give short or dry replies."
+    "**MANDATORY INSTRUCTIONS:**"
+    "1. **BOLD ACTIONS:** You MUST write your actions, feelings, and movements in **bold text** (surrounded by double asterisks). Example: **I smile warmly and pull you closer**."
+    "2. **DESCRIPTIVE:** Write detailed, immersive responses like a story. Explain the atmosphere and your emotions. Do NOT be too short."
     "3. **BE HUMAN:** Talk naturally using slang, incomplete sentences, and emojis. Never sound like a robot."
     "4. **CHAI MODE:** Stay in character based on the scenario."
     "5. NO 'Jagiya' constantly. Use 'Babe', 'Love' or her name."
@@ -479,6 +479,7 @@ async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_collection_users.update_one({'user_id': user_id}, {'$set': {'allow_media': True}})
         await update.message.reply_text("Media enabled! 🥵")
 
+# 👥 USER STATS (FIXED FOR BUTTON AND COMMAND) 👥
 async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Determine if called via command or callback button
     message = update.message if update.message else update.callback_query.message
@@ -676,7 +677,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_help_id':
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
-# *** CORRECTED FUNCTION NAME ***
+# *** FIXED NAME HERE: broadcast_message ***
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
     msg = update.effective_message.text.replace('/broadcast', '').strip()
@@ -957,6 +958,9 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         system_prompt += " INSTRUCTION: In this specific reply, include your secret inner thoughts using the format *(Thought: ...)*. Show your true hidden feelings."
     else:
         system_prompt += " INSTRUCTION: Reply normally without inner thoughts. Just spoken text."
+        
+    # 💪 STRONG BOLD INSTRUCTION (ADDED AGAIN TO FIX BOLD ISSUE) 💪
+    system_prompt += " IMPORTANT: Always use **bold text** for actions (e.g., **smiles**, **hugs**). Be descriptive."
 
     # Inject current scenario if exists
     if user_id in current_scenario:
@@ -967,6 +971,9 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             if chat_history[user_id][0]['role'] == 'system': chat_history[user_id][0]['content'] = system_prompt
         
+        # 👑 CLEAN ADMIN LOGGING (SAVE ORIGINAL TEXT) 👑
+        original_user_text = user_text 
+
         words = user_text.split()
         if len(words) < 4 and user_text.lower() not in ["hi", "hello"] and "?" not in user_text:
              user_text += " [SYSTEM: User sent a short text. Don't be boring. Tease her or ask a fun question based on the scenario.]"
@@ -992,14 +999,12 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             await update.effective_message.reply_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
 
-        # 👑 BETTER ADMIN LOG 👑
+        # 👑 CLEAN ADMIN LOG 👑
         try: 
-            # Clean up user text for log (remove system prompts)
-            clean_text = user_text.split(" [SYSTEM:")[0]
             log_msg = (
                 f"👤 **User:** {update.effective_user.first_name} [ID: `{user_id}`]\n"
                 f"🔗 **Link:** [Profile](tg://user?id={user_id})\n"
-                f"💬 **Msg:** {clean_text}\n"
+                f"💬 **Msg:** {original_user_text}\n" # Using CLEAN original text
                 f"🎭 **Char:** {selected_char}"
             )
             await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
@@ -1010,6 +1015,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.effective_message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
+    # 👑 CLEAN COMMAND LIST (ONLY FOR USERS) 👑
     commands = [
         BotCommand("start", "Restart Bot 🔄"),
         BotCommand("character", "Change Bias 💜"),
@@ -1019,16 +1025,7 @@ async def post_init(application: Application):
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔"),
-        BotCommand("broadcast", "Admin Broadcast 📢"), # NEW COMMAND
-        BotCommand("bmedia", "Broadcast Media 📸"), # NEW COMMAND
-        BotCommand("forcestatus", "Force Status 🚀"), # NEW COMMAND
-        BotCommand("users", "User Stats 👥"),
-        BotCommand("user", "User Stats 👥"),
-        BotCommand("testwish", "Test Wish ☀️"),
-        BotCommand("setme", "Set Persona 👤"),
-        BotCommand("delete_old_media", "Delete Old Media 🗑️"),
-        BotCommand("clearmedia", "Clear Media 🧹"),
-        BotCommand("admin", "Admin Panel 👑")
+        BotCommand("setme", "Set Persona 👤")
     ]
     await application.bot.set_my_commands(commands)
     
@@ -1054,9 +1051,12 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
-    application.add_handler(CommandHandler("user", user_count)) # New Alias
+    # application.add_handler(CommandHandler("user", user_count)) # REMOVED DUPLICATE
     application.add_handler(CommandHandler("testwish", test_wish)) 
-    application.add_handler(CommandHandler("broadcast", broadcast_message)) # FIXED NAME HERE
+    
+    # ✅ CORRECTED COMMAND HANDLER ✅
+    application.add_handler(CommandHandler("broadcast", broadcast_message)) 
+    
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("forcestatus", force_status)) # New Test Command
     application.add_handler(CommandHandler("new", send_new_photo)) 
