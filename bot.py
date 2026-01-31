@@ -1015,17 +1015,16 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.effective_message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
-    # 👑 CLEAN COMMAND LIST (ONLY FOR USERS) 👑
     commands = [
-        BotCommand("start", "Restart Bot 🔄"),
-        BotCommand("character", "Change Bias 💜"),
-        BotCommand("game", "Truth or Dare 🎮"),
-        BotCommand("imagine", "Create Photo 📸"), 
-        BotCommand("date", "Virtual Date 🍷"),
-        BotCommand("new", "Get New Photo 📸"),
-        BotCommand("stopmedia", "Stop Photos 🔕"),
-        BotCommand("allowmedia", "Allow Photos 🔔"),
-        BotCommand("setme", "Set Persona 👤")
+        BotCommand("start", "🏠 Restart / Home"),
+        BotCommand("character", "💜 Change Character"),
+        BotCommand("setme", "👤 Set My Persona"),  # <-- ഇതാണ് 3-ാമത് ആക്കിയത്
+        BotCommand("game", "🎮 Play Game"),
+        BotCommand("imagine", "📸 Generate Image"),
+        BotCommand("date", "🍷 Virtual Date"),
+        BotCommand("new", "🖼 Random Photo"),
+        BotCommand("stopmedia", "🔕 Stop Daily Pics"),
+        BotCommand("allowmedia", "🔔 Allow Daily Pics")
     ]
     await application.bot.set_my_commands(commands)
     
