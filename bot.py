@@ -480,33 +480,43 @@ async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Media enabled! 🥵")
 
 async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != ADMIN_TELEGRAM_ID: return
-    count = 0
-    if establish_db_connection(): count = db_collection_users.count_documents({})
+    # Determine if called via command or callback button
+    message = update.message if update.message else update.callback_query.message
+    is_admin = False
     
-    # 👥 USER STATS (FIXED) 👥
+    user_id = update.effective_user.id
+    if user_id == ADMIN_TELEGRAM_ID: is_admin = True
+    
+    if not is_admin:
+        await message.reply_text("Admin only!")
+        return
+
+    total_count = 0
     active_today = 0
     inactive_users = 0
     
     if establish_db_connection():
+        total_count = db_collection_users.count_documents({})
+        
         # Calculate active in last 24h
         one_day_ago = datetime.now(timezone.utc) - timedelta(days=1)
         active_today = db_collection_users.count_documents({'last_seen': {'$gte': one_day_ago}})
         
         # Inactive (Total - Active Today) roughly, or use a threshold like 1 week
-        inactive_users = count - active_today
+        inactive_users = total_count - active_today
 
     stats_text = (
         f"📊 **User Statistics**\n\n"
-        f"👥 **Total Users:** {count}\n"
+        f"👥 **Total Users:** {total_count}\n"
         f"🟢 **Active Today:** {active_today}\n"
         f"💀 **Inactive/Old:** {inactive_users}"
     )
     
     if update.callback_query:
+        await update.callback_query.answer()
         await update.callback_query.message.edit_text(stats_text, parse_mode='Markdown')
     else:
-        await update.message.reply_text(stats_text, parse_mode='Markdown')
+        await message.reply_text(stats_text, parse_mode='Markdown')
 
 async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id 
@@ -542,7 +552,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: await message_obj.reply_text("No media found.")
     except Exception: await message_obj.reply_text("Error sending media.")
 
-# 🆕 FAKE STATUS UPDATE JOB (Updated to 10:00 AM) 🆕
+# 🆕 FAKE STATUS UPDATE JOB (UPDATED TIME 10:00 AM) 🆕
 async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection(): return
     
@@ -666,7 +676,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_help_id':
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
-# *** FIXED: Function name changed to match handler ***
+# *** CORRECTED FUNCTION NAME ***
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
     msg = update.effective_message.text.replace('/broadcast', '').strip()
@@ -1008,7 +1018,17 @@ async def post_init(application: Application):
         BotCommand("date", "Virtual Date 🍷"),
         BotCommand("new", "Get New Photo 📸"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
-        BotCommand("allowmedia", "Allow Photos 🔔")
+        BotCommand("allowmedia", "Allow Photos 🔔"),
+        BotCommand("broadcast", "Admin Broadcast 📢"), # NEW COMMAND
+        BotCommand("bmedia", "Broadcast Media 📸"), # NEW COMMAND
+        BotCommand("forcestatus", "Force Status 🚀"), # NEW COMMAND
+        BotCommand("users", "User Stats 👥"),
+        BotCommand("user", "User Stats 👥"),
+        BotCommand("testwish", "Test Wish ☀️"),
+        BotCommand("setme", "Set Persona 👤"),
+        BotCommand("delete_old_media", "Delete Old Media 🗑️"),
+        BotCommand("clearmedia", "Clear Media 🧹"),
+        BotCommand("admin", "Admin Panel 👑")
     ]
     await application.bot.set_my_commands(commands)
     
@@ -1036,7 +1056,7 @@ def main():
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("user", user_count)) # New Alias
     application.add_handler(CommandHandler("testwish", test_wish)) 
-    application.add_handler(CommandHandler("broadcast", broadcast_message)) 
+    application.add_handler(CommandHandler("broadcast", broadcast_message)) # FIXED NAME HERE
     application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("forcestatus", force_status)) # New Test Command
     application.add_handler(CommandHandler("new", send_new_photo)) 
