@@ -5,6 +5,7 @@ import random
 import requests 
 import pytz 
 import urllib.parse 
+import base64
 from groq import Groq
 from telegram import Update, BotCommand, ReplyKeyboardRemove 
 from telegram.constants import ChatAction
@@ -478,11 +479,45 @@ async def allow_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_collection_users.update_one({'user_id': user_id}, {'$set': {'allow_media': True}})
         await update.message.reply_text("Media enabled! 🥵")
 
+# 👥 USER STATS (FIXED FOR BUTTON AND COMMAND) 👥
 async def user_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != ADMIN_TELEGRAM_ID: return
-    count = 0
-    if establish_db_connection(): count = db_collection_users.count_documents({})
-    await update.message.reply_text(f"Total users: {count}")
+    # Determine if called via command or callback button
+    message = update.message if update.message else update.callback_query.message
+    is_admin = False
+    
+    user_id = update.effective_user.id
+    if user_id == ADMIN_TELEGRAM_ID: is_admin = True
+    
+    if not is_admin:
+        await message.reply_text("Admin only!")
+        return
+
+    total_count = 0
+    active_today = 0
+    inactive_users = 0
+    
+    if establish_db_connection():
+        total_count = db_collection_users.count_documents({})
+        
+        # Calculate active in last 24h
+        one_day_ago = datetime.now(timezone.utc) - timedelta(days=1)
+        active_today = db_collection_users.count_documents({'last_seen': {'$gte': one_day_ago}})
+        
+        # Inactive (Total - Active Today) roughly, or use a threshold like 1 week
+        inactive_users = total_count - active_today
+
+    stats_text = (
+        f"📊 **User Statistics**\n\n"
+        f"👥 **Total Users:** {total_count}\n"
+        f"🟢 **Active Today:** {active_today}\n"
+        f"💀 **Inactive/Old:** {inactive_users}"
+    )
+    
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(stats_text, parse_mode='Markdown')
+    else:
+        await message.reply_text(stats_text, parse_mode='Markdown')
 
 async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id 
@@ -518,7 +553,7 @@ async def send_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: await message_obj.reply_text("No media found.")
     except Exception: await message_obj.reply_text("Error sending media.")
 
-# 🆕 FAKE STATUS UPDATE JOB
+# 🆕 FAKE STATUS UPDATE JOB (UPDATED TIME)
 async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
     if not establish_db_connection(): return
     
@@ -539,6 +574,11 @@ async def send_fake_status(context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
         except Exception: pass
+
+async def force_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+    await update.message.reply_text("🚀 Forcing Status Update...")
+    await send_fake_status(context)
 
 async def run_hourly_cleanup(application: Application):
     await asyncio.sleep(300) 
@@ -778,6 +818,106 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_user_message[user_id] = user_text # Store for regeneration
     await generate_ai_response(update, context, user_text, is_regenerate=False)
 
+# 🎤 VOICE NOTE HANDLER (NEW) 🎤
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not groq_client: return
+    user_id = update.effective_user.id
+    
+    # Send "Typing..." action or "Recording..."
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    
+    try:
+        # Download Voice File
+        file_id = update.message.voice.file_id
+        new_file = await context.bot.get_file(file_id)
+        file_path = "voice.ogg"
+        await new_file.download_to_drive(file_path)
+        
+        # Transcribe with Groq Whisper
+        with open(file_path, "rb") as file:
+            transcription = groq_client.audio.transcriptions.create(
+                file=(file_path, file.read()),
+                model="whisper-large-v3",
+                response_format="text"
+            )
+        
+        user_text = transcription # The text from voice
+        
+        # Treat as normal message
+        last_user_message[user_id] = user_text
+        await generate_ai_response(update, context, user_text, is_regenerate=False)
+        
+        # Cleanup
+        os.remove(file_path)
+        
+    except Exception as e:
+        logger.error(f"Voice Error: {e}")
+        await update.message.reply_text("I couldn't hear that clearly, baby... say it again? 🥺")
+
+# 📸 PHOTO HANDLER (VISION SUPPORT) 📸
+async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not groq_client: return
+    user_id = update.effective_user.id
+    caption = update.message.caption or "Look at this!"
+    
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    
+    try:
+        # Get highest res photo
+        photo = update.message.photo[-1]
+        file = await context.bot.get_file(photo.file_id)
+        
+        # We need base64 for Groq Vision
+        # Download bytearray
+        image_bytes = await file.download_as_bytearray()
+        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+        
+        selected_char = "TaeKook"
+        if establish_db_connection():
+            user_doc = db_collection_users.find_one({'user_id': user_id})
+            if user_doc: selected_char = user_doc.get('character', 'TaeKook')
+            
+        system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
+        system_prompt += " NOTE: The user sent you a photo. React to it in character. Be descriptive."
+
+        # Call Vision Model
+        completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": caption},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            model="llama-3.2-11b-vision-preview" # Vision Model
+        )
+        
+        reply_text = completion.choices[0].message.content.strip()
+        final_reply = add_emojis_balanced(reply_text)
+        
+        # Save text representation to history (to avoid breaking text model later)
+        if user_id not in chat_history: chat_history[user_id] = [{"role": "system", "content": system_prompt}]
+        chat_history[user_id].append({"role": "user", "content": f"[User sent a photo]: {caption}"})
+        chat_history[user_id].append({"role": "assistant", "content": final_reply})
+        
+        await update.message.reply_text(final_reply, parse_mode='Markdown')
+        
+        # Log for Admin
+        try: await context.bot.send_message(ADMIN_TELEGRAM_ID, f"📷 **Photo from {update.effective_user.first_name}:**\n{caption}")
+        except: pass
+
+    except Exception as e:
+        logger.error(f"Vision Error: {e}")
+        await update.message.reply_text("I can't see that clearly... show me again? 🥺")
+
 async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYPE, user_text, is_regenerate=False):
     user_id = update.effective_user.id 
     
@@ -851,8 +991,17 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             await update.effective_message.reply_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
 
-        # 👑 ADMIN LOG 👑
-        try: await context.bot.send_message(ADMIN_TELEGRAM_ID, f"📩 {update.effective_user.first_name} ({selected_char}): {user_text}")
+        # 👑 BETTER ADMIN LOG 👑
+        try: 
+            # Clean up user text for log (remove system prompts)
+            clean_text = user_text.split(" [SYSTEM:")[0]
+            log_msg = (
+                f"👤 **User:** {update.effective_user.first_name} [ID: `{user_id}`]\n"
+                f"🔗 **Link:** [Profile](tg://user?id={user_id})\n"
+                f"💬 **Msg:** {clean_text}\n"
+                f"🎭 **Char:** {selected_char}"
+            )
+            await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
         except Exception: pass
         
     except Exception as e:
@@ -861,15 +1010,14 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def post_init(application: Application):
     commands = [
-        BotCommand("start", "🏠 Restart / Home"),
-        BotCommand("character", "💜 Change Character"),
-        BotCommand("setme", "👤 Set My Persona"),
-        BotCommand("imagine", "📸 Generate Image"),
-        BotCommand("game", "🎮 Play Game"),
-        BotCommand("date", "🍷 Virtual Date"),
-        BotCommand("new", "🖼 Random Photo"),
-        BotCommand("stopmedia", "🔕 Stop Daily Pics"),
-        BotCommand("allowmedia", "🔔 Allow Daily Pics")
+        BotCommand("start", "Restart Bot 🔄"),
+        BotCommand("character", "Change Bias 💜"),
+        BotCommand("game", "Truth or Dare 🎮"),
+        BotCommand("imagine", "Create Photo 📸"), 
+        BotCommand("date", "Virtual Date 🍷"),
+        BotCommand("new", "Get New Photo 📸"),
+        BotCommand("stopmedia", "Stop Photos 🔕"),
+        BotCommand("allowmedia", "Allow Photos 🔔")
     ]
     await application.bot.set_my_commands(commands)
     
@@ -878,8 +1026,8 @@ async def post_init(application: Application):
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
         
-        # 🆕 4. FAKE STATUS UPDATE JOB (Daily at 5:30 PM)
-        application.job_queue.run_daily(send_fake_status, time=time(hour=17, minute=30, tzinfo=ist))
+        # 🆕 4. FAKE STATUS UPDATE JOB (Updated to 10:00 AM) 🆕
+        application.job_queue.run_daily(send_fake_status, time=time(hour=10, minute=0, tzinfo=ist))
         
         application.job_queue.run_repeating(check_inactivity, interval=3600, first=60)
 
@@ -895,9 +1043,11 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("users", user_count))
+    application.add_handler(CommandHandler("user", user_count)) # New Alias
     application.add_handler(CommandHandler("testwish", test_wish)) 
-    application.add_handler(CommandHandler("broadcast", broadcast_command)) # NEW COMMAND
-    application.add_handler(CommandHandler("bmedia", bmedia_broadcast)) # NEW COMMAND
+    application.add_handler(CommandHandler("broadcast", broadcast_command)) 
+    application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
+    application.add_handler(CommandHandler("forcestatus", force_status)) # New Test Command
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
     application.add_handler(CommandHandler("date", start_date))
@@ -919,7 +1069,10 @@ def main():
         get_media_id
     ))
     
+    # HANDLERS FOR PHOTO AND VOICE
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO), channel_message_handler))
+    application.add_handler(MessageHandler(filters.VOICE & filters.ChatType.PRIVATE, handle_voice_message))
+    application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, handle_photo_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
     logger.info(f"Starting webhook on port {PORT}")
