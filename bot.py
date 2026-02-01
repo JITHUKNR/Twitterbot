@@ -533,6 +533,10 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    try:
+        await query.answer()
+    except:
+        pass
     
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
@@ -571,39 +575,71 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_help_id':
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
-async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
-    msg = update.effective_message.text.replace('/broadcast', '').strip()
-    if not msg: return
-    if establish_db_connection():
-        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-        for uid in users:
-            try: await context.bot.send_message(uid, f"📢 **Chai Update:**\n{msg}")
-            except Exception: pass
-        await update.effective_message.reply_text(f"Sent to {len(users)} users.")
 
-async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_TELEGRAM_ID:
+        return
+
     reply = update.message.reply_to_message
-    if not reply:
-        await update.message.reply_text("❌ **Error:** Please reply to a photo or video with /bmedia.")
+    args_text = " ".join(context.args)
+
+    caption = args_text or ""
+    reply_markup = None
+
+    # Button format: Caption | Text-URL
+    if "|" in args_text:
+        parts = args_text.split("|")
+        caption = parts[0].strip()
+        buttons = []
+        for part in parts[1:]:
+            if "-" in part:
+                try:
+                    txt, url = part.split("-", 1)
+                    buttons.append([InlineKeyboardButton(txt.strip(), url=url.strip())])
+                except:
+                    pass
+        if buttons:
+            reply_markup = InlineKeyboardMarkup(buttons)
+
+    if not establish_db_connection():
+        await update.message.reply_text("DB Error.")
         return
-    file_id = reply.photo[-1].file_id if reply.photo else reply.video.file_id if reply.video else None
-    if not file_id:
-        await update.message.reply_text("❌ **Error:** No media found in the replied message.")
-        return
-    await update.message.reply_text("⏳ **Broadcasting Media...** This may take some time.")
-    caption = " ".join(context.args) or "Special Update! 💜"
-    if establish_db_connection():
-        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-        sent_count = 0
-        for uid in users:
-            try: 
-                if reply.photo: await context.bot.send_photo(uid, file_id, caption=caption, protect_content=True)
-                else: await context.bot.send_video(uid, file_id, caption=caption, protect_content=True)
-                sent_count += 1
-            except Exception: pass
-        await update.message.reply_text(f"✅ **Broadcast Complete!**\nSent to {sent_count} users.")
+
+    users = [u['user_id'] for u in db_collection_users.find({}, {'user_id': 1})]
+    sent = 0
+
+    await update.message.reply_text("📣 Broadcasting...")
+
+    for uid in users:
+        try:
+            if reply and reply.photo:
+                await context.bot.send_photo(
+                    uid,
+                    reply.photo[-1].file_id,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                    protect_content=True
+                )
+            elif reply and reply.video:
+                await context.bot.send_video(
+                    uid,
+                    reply.video.file_id,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                    protect_content=True
+                )
+            else:
+                await context.bot.send_message(
+                    uid,
+                    f"📢 {caption}",
+                    reply_markup=reply_markup
+                )
+            sent += 1
+        except:
+            pass
+
+    await update.message.reply_text(f"✅ Broadcast sent to {sent} users.")
+
 
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
@@ -761,7 +797,6 @@ def main():
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("testwish", test_wish)) 
     application.add_handler(CommandHandler("broadcast", broadcast_message))
-    application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
     application.add_handler(CommandHandler("date", start_date))
