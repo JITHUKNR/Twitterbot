@@ -684,73 +684,70 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_help_id':
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
+# 📢 SMART BROADCAST (TEXT & MEDIA IN ONE COMMAND) 📢
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
-    msg = update.effective_message.text.replace('/broadcast', '').strip()
-    if not msg: return
     
-    # Check for buttons (Caption | Button-Link)
-    reply_markup = None
-    if "|" in msg:
-        parts = msg.split("|")
-        msg = parts[0].strip()
-        buttons_list = []
-        for btn_part in parts[1:]:
-            if "-" in btn_part:
-                try:
-                    btn_txt, btn_url = btn_part.split("-", 1)
-                    buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
-                except: pass
-        if buttons_list:
-            reply_markup = InlineKeyboardMarkup(buttons_list)
-
-    if establish_db_connection():
-        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-        for uid in users:
-            try: await context.bot.send_message(uid, f"📢 **Chai Update:**\n{msg}", reply_markup=reply_markup)
-            except Exception: pass
-        await update.effective_message.reply_text(f"Sent to {len(users)} users.")
-
-async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+    # 1. Check for Reply Media
     reply = update.message.reply_to_message
-    if not reply:
-        await update.message.reply_text("❌ **Error:** Please reply to a photo or video with /bmedia.")
-        return
-    file_id = reply.photo[-1].file_id if reply.photo else reply.video.file_id if reply.video else None
-    if not file_id:
-        await update.message.reply_text("❌ **Error:** No media found in the replied message.")
-        return
-        
-    await update.message.reply_text("⏳ **Broadcasting Media...** This may take some time.")
-    args_text = " ".join(context.args)
-    caption = args_text or "Special Update! 💜"
+    media_file_id = None
+    is_video = False
     
-    # Button Parsing
+    if reply:
+        if reply.photo:
+            media_file_id = reply.photo[-1].file_id
+        elif reply.video:
+            media_file_id = reply.video.file_id
+            is_video = True
+
+    # 2. Extract Text
+    raw_text = update.effective_message.text.replace('/broadcast', '').strip()
+    
+    # ⚠️ ERROR FIX: Using single line string to avoid syntax errors
+    if not media_file_id and not raw_text:
+        await update.effective_message.reply_text(
+            "❌ **Usage:**\nType `/broadcast Message | Button-Link`\nOr Reply to Media with `/broadcast Caption`",
+            parse_mode='Markdown'
+        )
+        return
+
+    msg_or_caption = raw_text
+    if media_file_id and not msg_or_caption:
+        msg_or_caption = "Special Update! 💜"
+
+    # 3. Button Logic
     reply_markup = None
-    if "|" in args_text:
-        parts = args_text.split("|")
-        caption = parts[0].strip()
-        buttons_list = []
-        for btn_part in parts[1:]:
+    if "|" in raw_text:
+        parts = raw_text.split("|")
+        msg_or_caption = parts[0].strip()
+        
+        if len(parts) > 1:
+            btn_part = parts[1].strip()
             if "-" in btn_part:
                 try:
                     btn_txt, btn_url = btn_part.split("-", 1)
-                    buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
+                    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())]])
                 except: pass
-        if buttons_list:
-            reply_markup = InlineKeyboardMarkup(buttons_list)
 
+    # 4. Sending Logic
     if establish_db_connection():
         users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-        sent_count = 0
+        sent = 0
+        status_msg = await update.effective_message.reply_text(f"⏳ Broadcasting to {len(users)} users...", parse_mode='Markdown')
+        
         for uid in users:
-            try: 
-                if reply.photo: await context.bot.send_photo(uid, file_id, caption=caption, reply_markup=reply_markup, protect_content=True)
-                else: await context.bot.send_video(uid, file_id, caption=caption, reply_markup=reply_markup, protect_content=True)
-                sent_count += 1
+            try:
+                if media_file_id:
+                    if is_video:
+                        await context.bot.send_video(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
+                    else:
+                        await context.bot.send_photo(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
+                else:
+                    await context.bot.send_message(uid, f"📢 **Chai Update:**\n\n{msg_or_caption}", reply_markup=reply_markup, parse_mode='Markdown')
+                sent += 1
             except Exception: pass
-        await update.message.reply_text(f"✅ **Broadcast Complete!**\nSent to {sent_count} users.")
+            
+        await status_msg.edit_text(f"✅ **Broadcast Complete!**\nSent to {sent} users.", parse_mode='Markdown')
 
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
@@ -1056,7 +1053,7 @@ def main():
     application.add_handler(CommandHandler("user", user_count)) # New Alias
     application.add_handler(CommandHandler("testwish", test_wish)) 
     application.add_handler(CommandHandler("broadcast", broadcast_message)) 
-    application.add_handler(CommandHandler("bmedia", bmedia_broadcast))
+    # REMOVED BMEDIA HANDLER HERE
     application.add_handler(CommandHandler("forcestatus", force_status)) # New Test Command
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
@@ -1089,4 +1086,4 @@ def main():
     application.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
 
 if __name__ == '__main__':
-    main() 
+    main()
