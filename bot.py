@@ -1026,8 +1026,8 @@ async def post_init(application: Application):
         BotCommand("date", "🍷Virtual Date"),
         BotCommand("imagine", "📸Create Photo"),
         BotCommand("new", "🥵Get New Photo"),
-        BotCommand("stopmedia", "Stop Photos 🔕"),
-        BotCommand("allowmedia", "Allow Photos 🔔")
+        BotCommand("stopmedia", "🔕Stop Photos"),
+        BotCommand("allowmedia", "🔔Allow Photos")
     ]
     await application.bot.set_my_commands(commands)
     
