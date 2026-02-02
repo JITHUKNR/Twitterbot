@@ -292,10 +292,8 @@ async def set_plot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_doc = db_collection_users.find_one({'user_id': user_id})
         if user_doc: selected_char = user_doc.get('character', 'TaeKook')
     
-    # Clear history to start new plot
     if user_id in chat_history: del chat_history[user_id]
     
-    # 🌟 BOT STARTS FIRST (CHAI STYLE) 🌟
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     system_prompt += f" SCENARIO: {current_scenario[user_id]}"
     
@@ -318,6 +316,51 @@ async def set_plot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await query.message.edit_text("Ready! You can start chatting now. 💜")
 
+async def start_roleplay_with_plot(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id):
+    selected_char = "TaeKook"
+    if establish_db_connection():
+        user_doc = db_collection_users.find_one({'user_id': user_id})
+        if user_doc: selected_char = user_doc.get('character', 'TaeKook')
+    
+    if user_id in chat_history: del chat_history[user_id]
+    
+    system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
+    system_prompt += f" SCENARIO: {current_scenario[user_id]}"
+    
+    start_prompt = f"Start the roleplay based on the scenario: '{current_scenario[user_id]}'. Send the first message to the user now. Be immersive."
+    
+    try:
+        chat_id = update.effective_chat.id
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        
+        completion = groq_client.chat.completions.create(
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": start_prompt}], 
+            model="llama-3.1-8b-instant"
+        )
+        msg = completion.choices[0].message.content.strip()
+        final_msg = add_emojis_balanced(msg)
+        
+        chat_history[user_id] = [{"role": "system", "content": system_prompt}, {"role": "assistant", "content": final_msg}]
+        
+        await context.bot.send_message(chat_id, f"✨ **Story Started!**\n\n{final_msg}", parse_mode='Markdown')
+        
+    except Exception:
+        await context.bot.send_message(chat_id, "Ready! You can start chatting now. 💜")
+
+# 👤 USER PERSONA COMMAND (THIS WAS MISSING!) 👤
+async def set_persona_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    persona_text = " ".join(context.args)
+    
+    if not persona_text:
+        await update.message.reply_text("Tell me who you are! Example:\n`/setme I am your angry boss`", parse_mode='Markdown')
+        return
+
+    if establish_db_connection():
+        db_collection_users.update_one({'user_id': user_id}, {'$set': {'user_persona': persona_text}})
+        if user_id in chat_history: del chat_history[user_id]
+        await update.message.reply_text(f"✅ **Persona Set:** You are now '{persona_text}'\n\n(Chat history cleared to apply change!)", parse_mode='Markdown')
+
 async def regenerate_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -328,7 +371,6 @@ async def regenerate_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.answer("Regenerating... 🔄")
     
-    # Remove last assistant message
     if chat_history[user_id] and chat_history[user_id][-1]['role'] == 'assistant':
         chat_history[user_id].pop()
         
@@ -591,7 +633,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer()
     
-    # ✅ FIX: Passing correct 'update' instead of 'query'
     if query.data == 'admin_users': await user_count(update, context)
     elif query.data == 'admin_new_photo': await send_new_photo(update, context)
     elif query.data == 'admin_clearmedia': await clear_deleted_media(update, context)
