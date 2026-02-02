@@ -1016,13 +1016,15 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.effective_message.reply_text("I'm a bit dizzy... tell me again? 🥺")
 
 async def post_init(application: Application):
+    # 👑 SIMPLE MENU (With Set Persona) 👑
     commands = [
-        BotCommand("start", "Restart Bot 🔄"),
-        BotCommand("character", "Change Bias 💜"),
-        BotCommand("game", "Truth or Dare 🎮"),
-        BotCommand("imagine", "Create Photo 📸"), 
-        BotCommand("date", "Virtual Date 🍷"),
-        BotCommand("new", "Get New Photo 📸"),
+        BotCommand("start", "🔄Restart Bot"),
+        BotCommand("character", "💜Change Bias"),
+        BotCommand("setme", "👤Set Persona"),   # ✅ ഇത് മാത്രം പുതുതായി ചേർത്തു
+        BotCommand("game", "🎮Truth or Dare"),
+        BotCommand("date", "🍷Virtual Date"),
+        BotCommand("imagine", "📸Create Photo"),
+        BotCommand("new", "🥵Get New Photo"),
         BotCommand("stopmedia", "Stop Photos 🔕"),
         BotCommand("allowmedia", "Allow Photos 🔔")
     ]
@@ -1033,7 +1035,7 @@ async def post_init(application: Application):
         application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
         application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
         
-        # 🆕 4. FAKE STATUS UPDATE JOB (Updated to 10:00 AM) 🆕
+        # FAKE STATUS UPDATE JOB
         application.job_queue.run_daily(send_fake_status, time=time(hour=10, minute=0, tzinfo=ist))
         
         application.job_queue.run_repeating(check_inactivity, interval=3600, first=60)
