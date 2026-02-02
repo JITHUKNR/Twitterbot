@@ -762,7 +762,7 @@ Or reply to photo/video with /broadcast Caption"""
             except Exception:
                 pass
 
-        await status_msg.edit_text(f"✅ Broadcast Complete! Sent to {sent} users.")
+        await status_msg.edit_text(f"""✅ Broadcast Complete! Sent to {sent} users.""")
 
 
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
