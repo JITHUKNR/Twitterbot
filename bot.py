@@ -604,12 +604,38 @@ async def delete_old_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await context.bot.delete_message(chat_id=doc['chat_id'], message_id=doc['message_id'])
         except Exception: pass
         db_collection_sent.delete_one({'_id': doc['_id']})
-    await update.effective_message.reply_text(
-    """❌ **Usage:**
-Type `/broadcast Message | Button-Link`
-Or Reply to Media with `/broadcast Caption`""",
-    parse_mode='Markdown'
-)
+    await update.effective_message.reply_text(f"Deleted {len(msgs)} messages.")
+
+async def clear_deleted_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+    await update.effective_message.reply_text("Cleaning up...")
+    if not establish_db_connection(): return
+    all_media = list(db_collection_media.find({}))
+    deleted = 0
+    for doc in all_media:
+        try:
+            if doc['file_type'] == 'photo': msg = await context.bot.send_photo(ADMIN_TELEGRAM_ID, doc['file_id'], disable_notification=True)
+            else: msg = await context.bot.send_video(ADMIN_TELEGRAM_ID, doc['file_id'], disable_notification=True)
+            await context.bot.delete_message(ADMIN_TELEGRAM_ID, msg.message_id)
+        except BadRequest:
+            db_collection_media.delete_one({'_id': doc['_id']})
+            deleted += 1
+        except Exception: pass
+        await asyncio.sleep(0.1)
+    await update.effective_message.reply_text(f"Removed {deleted} invalid files.")
+
+# 👑 ADMIN MENU 👑
+async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != ADMIN_TELEGRAM_ID: return
+    
+    keyboard = [
+        [InlineKeyboardButton("Users 👥", callback_data='admin_users'), InlineKeyboardButton("New Photo 📸", callback_data='admin_new_photo')],
+        [InlineKeyboardButton("Broadcast 📣", callback_data='admin_broadcast_text'), InlineKeyboardButton("Test Wish ☀️", callback_data='admin_test_wish')],
+        [InlineKeyboardButton("Clean Media 🧹", callback_data='admin_clearmedia'), InlineKeyboardButton("Delete Old 🗑️", callback_data='admin_delete_old')],
+        [InlineKeyboardButton("How to use File ID? 🆔", callback_data='admin_help_id')]
+    ]
+    
+    await update.message.reply_text("👑 **Super Admin Panel:**\nSelect an option below:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -661,13 +687,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 📢 SMART BROADCAST (TEXT & MEDIA IN ONE COMMAND) 📢
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
-    
-    # 1. Check reply media (photo/video)
+    if update.effective_user.id != ADMIN_TELEGRAM_ID:
+        return
+
     reply = update.message.reply_to_message
     media_file_id = None
     is_video = False
-    
+
     if reply:
         if reply.photo:
             media_file_id = reply.photo[-1].file_id
@@ -675,45 +701,38 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media_file_id = reply.video.file_id
             is_video = True
 
-    # 2. Parse text and button
     raw_text = update.effective_message.text.replace('/broadcast', '').strip()
-    
+
     if not media_file_id and not raw_text:
         await update.effective_message.reply_text(
-            "❌ **Usage:**
-Type `/broadcast Message | Button-Link`
-Or Reply to Media with `/broadcast Caption`",
-            parse_mode='Markdown'
+            """❌ **Usage:**
+Type /broadcast Message | Button-Link
+Or reply to photo/video with /broadcast Caption"""
         )
         return
 
-    msg_or_caption = raw_text or "Special Update! 💜"
+    msg_or_caption = raw_text if raw_text else "Special Update! 💜"
 
-    # 3. Button logic (Text | Button-Link)
     reply_markup = None
     if "|" in raw_text:
-        parts = raw_text.split("|")
+        parts = raw_text.split("|", 1)
         msg_or_caption = parts[0].strip()
-        if len(parts) > 1:
-            btn_part = parts[1].strip()
-            if "-" in btn_part:
-                try:
-                    btn_txt, btn_url = btn_part.split("-", 1)
-                    reply_markup = InlineKeyboardMarkup([
-                        [InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())]
-                    ])
-                except:
-                    pass
+        if len(parts) > 1 and "-" in parts[1]:
+            try:
+                btn_txt, btn_url = parts[1].split("-", 1)
+                reply_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())]
+                ])
+            except Exception:
+                pass
 
-    # 4. Broadcast loop
     if establish_db_connection():
-        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
+        users = [u['user_id'] for u in db_collection_users.find({}, {'user_id': 1})]
         sent = 0
         status_msg = await update.effective_message.reply_text(
-            f"⏳ Broadcasting to {len(users)} users...",
-            parse_mode='Markdown'
+            f"⏳ Broadcasting to {len(users)} users..."
         )
-        
+
         for uid in users:
             try:
                 if media_file_id:
@@ -734,21 +753,16 @@ Or Reply to Media with `/broadcast Caption`",
                 else:
                     await context.bot.send_message(
                         uid,
-                        f"📢 **Chai Update:**
+                        f"📢 Chai Update:
 
 {msg_or_caption}",
-                        reply_markup=reply_markup,
-                        parse_mode='Markdown'
+                        reply_markup=reply_markup
                     )
                 sent += 1
             except Exception:
                 pass
-            
-        await status_msg.edit_text(
-            f"✅ **Broadcast Complete!**
-Sent to {sent} users.",
-            parse_mode='Markdown'
-        )
+
+        await status_msg.edit_text(f"✅ Broadcast Complete! Sent to {sent} users.")
 
 
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
