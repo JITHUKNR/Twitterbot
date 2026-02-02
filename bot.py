@@ -639,6 +639,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
+    # Character/Plot/Game/Date selection logic remains same
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
         return
@@ -665,11 +666,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer()
     
-    if query.data == 'admin_users': await user_count(query, context)
-    elif query.data == 'admin_new_photo': await send_new_photo(query, context)
-    elif query.data == 'admin_clearmedia': await clear_deleted_media(query, context)
-    elif query.data == 'admin_delete_old': await delete_old_media(query, context)
-    elif query.data == 'admin_broadcast_text': await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType /broadcast Your Message\nType /bmedia (as reply to photo)")
+    # ✅ CORRECTED PART: Passing 'update' instead of 'query'
+    if query.data == 'admin_users': 
+        await user_count(update, context)
+    elif query.data == 'admin_new_photo': 
+        await send_new_photo(update, context)
+    elif query.data == 'admin_clearmedia': 
+        await clear_deleted_media(update, context)
+    elif query.data == 'admin_delete_old': 
+        await delete_old_media(update, context)
+    elif query.data == 'admin_broadcast_text': 
+        await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType `/broadcast Your Message`\nType `/bmedia` (as reply to photo)", parse_mode='Markdown')
     elif query.data == 'admin_test_wish':
         await context.bot.send_message(query.from_user.id, "☀️ Testing Morning Wish...")
         await send_morning_wish(context)
