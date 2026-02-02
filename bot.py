@@ -684,86 +684,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'admin_help_id':
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
-
-# 📢 SMART BROADCAST (TEXT & MEDIA IN ONE COMMAND) 📢
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_TELEGRAM_ID:
-        return
-
-    reply = update.message.reply_to_message
-    media_file_id = None
-    is_video = False
-
-    if reply:
-        if reply.photo:
-            media_file_id = reply.photo[-1].file_id
-        elif reply.video:
-            media_file_id = reply.video.file_id
-            is_video = True
-
-    raw_text = update.effective_message.text.replace('/broadcast', '').strip()
-
-    if not media_file_id and not raw_text:
-        await update.effective_message.reply_text(
-            """❌ **Usage:**
-Type /broadcast Message | Button-Link
-Or reply to photo/video with /broadcast Caption"""
-        )
-        return
-
-    msg_or_caption = raw_text if raw_text else "Special Update! 💜"
-
+    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+    msg = update.effective_message.text.replace('/broadcast', '').strip()
+    if not msg: return
+    
+    # Check for buttons (Caption | Button-Link)
     reply_markup = None
-    if "|" in raw_text:
-        parts = raw_text.split("|", 1)
-        msg_or_caption = parts[0].strip()
-        if len(parts) > 1 and "-" in parts[1]:
-            try:
-                btn_txt, btn_url = parts[1].split("-", 1)
-                reply_markup = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())]
-                ])
-            except Exception:
-                pass
+    if "|" in msg:
+        parts = msg.split("|")
+        msg = parts[0].strip()
+        buttons_list = []
+        for btn_part in parts[1:]:
+            if "-" in btn_part:
+                try:
+                    btn_txt, btn_url = btn_part.split("-", 1)
+                    buttons_list.append([InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())])
+                except: pass
+        if buttons_list:
+            reply_markup = InlineKeyboardMarkup(buttons_list)
 
     if establish_db_connection():
-        users = [u['user_id'] for u in db_collection_users.find({}, {'user_id': 1})]
-        sent = 0
-        status_msg = await update.effective_message.reply_text(
-            f"⏳ Broadcasting to {len(users)} users..."
-        )
-
+        users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
         for uid in users:
-            try:
-                if media_file_id:
-                    if is_video:
-                        await context.bot.send_video(
-                            uid, media_file_id,
-                            caption=msg_or_caption,
-                            reply_markup=reply_markup,
-                            protect_content=True
-                        )
-                    else:
-                        await context.bot.send_photo(
-                            uid, media_file_id,
-                            caption=msg_or_caption,
-                            reply_markup=reply_markup,
-                            protect_content=True
-                        )
-                else:
-                    await context.bot.send_message(
-                        uid,
-                        f"📢 Chai Update:
-
-{msg_or_caption}",
-                        reply_markup=reply_markup
-                    )
-                sent += 1
-            except Exception:
-                pass
-
-        await status_msg.edit_text(f"""✅ Broadcast Complete! Sent to {sent} users.""")
-
+            try: await context.bot.send_message(uid, f"📢 **Chai Update:**\n{msg}", reply_markup=reply_markup)
+            except Exception: pass
+        await update.effective_message.reply_text(f"Sent to {len(users)} users.")
 
 async def bmedia_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
