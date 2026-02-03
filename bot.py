@@ -703,31 +703,19 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    
-    # --- EXISTING CODE ---
-    if query.data.startswith("set_"):
-        await set_character_handler(update, context)
-        return
-    # ... (മറ്റുള്ളവ) ...
 
-    # 👇👇👇 ഈ ഭാഗം പുതിയതായി ചേർക്കുക 👇👇👇
+    # 1. SETTINGS & NSFW CHECK (New)
     if query.data == "settings_menu":
         await settings_command(update, context)
         return
-
     if query.data == "toggle_nsfw":
         await toggle_nsfw_handler(update, context)
         return
-
     if query.data == "close_settings":
         await close_settings(update, context)
         return
-    # 👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆
-    
-    if query.data.startswith("plot_"):
-    # ... (ബാക്കി കോഡ് അതുപോലെ നിലനിർത്തുക) ...
 
-    # Character/Plot/Game/Date selection logic remains same
+    # 2. CHARACTER & PLOT SELECTION
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
         return
@@ -735,7 +723,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("plot_"):
         await set_plot_handler(update, context)
         return
-        
+
+    # 3. GAME & DATE LOGIC
     if query.data.startswith("game_"):
         await game_handler(update, context)
         return
@@ -747,23 +736,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "regen_msg":
         await regenerate_message(update, context)
         return
-        
-    if query.from_user.id != ADMIN_TELEGRAM_ID: 
+
+    # 4. ADMIN CHECK
+    if query.from_user.id != ADMIN_TELEGRAM_ID:
         await query.answer("Admin only!", show_alert=True)
         return
 
     await query.answer()
-    
-    # ✅ CORRECTED PART: Passing 'update' instead of 'query'
-    if query.data == 'admin_users': 
+
+    # 5. ADMIN ACTIONS
+    if query.data == 'admin_users':
         await user_count(update, context)
-    elif query.data == 'admin_new_photo': 
+    elif query.data == 'admin_new_photo':
         await send_new_photo(update, context)
-    elif query.data == 'admin_clearmedia': 
+    elif query.data == 'admin_clearmedia':
         await clear_deleted_media(update, context)
-    elif query.data == 'admin_delete_old': 
+    elif query.data == 'admin_delete_old':
         await delete_old_media(update, context)
-    elif query.data == 'admin_broadcast_text': 
+    elif query.data == 'admin_broadcast_text':
         await context.bot.send_message(query.from_user.id, "📢 **To Broadcast:**\nType `/broadcast Your Message`\nType `/bmedia` (as reply to photo)", parse_mode='Markdown')
     elif query.data == 'admin_test_wish':
         await context.bot.send_message(query.from_user.id, "☀️ Testing Morning Wish...")
