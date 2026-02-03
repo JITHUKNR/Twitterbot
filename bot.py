@@ -402,6 +402,70 @@ async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif choice == 'game_dare':
         task = random.choice(DARE_CHALLENGES)
         await query.edit_message_text(f"**DARE:**\n{task}", parse_mode='Markdown')
+# ⚙️ SETTINGS MENU HANDLER ⚙️
+async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # കമാൻഡ് വഴി വന്നതാണോ അതോ ബട്ടൺ വഴി വന്നതാണോ എന്ന് നോക്കുന്നു
+    message = update.message if update.message else update.callback_query.message
+    user_id = update.effective_user.id
+    
+    # ഡാറ്റാബേസിൽ നിന്ന് നിലവിലെ അവസ്ഥ പരിശോധിക്കുന്നു
+    nsfw_status = False
+    if establish_db_connection():
+        user_doc = db_collection_users.find_one({'user_id': user_id})
+        if user_doc:
+            nsfw_status = user_doc.get('nsfw_enabled', False) # Default ആയി OFF ആയിരിക്കും
+
+    # സ്റ്റാറ്റസ് അനുസരിച്ച് ബട്ടണിലെ ടെക്സ്റ്റ് മാറ്റുന്നു
+    status_text = "✅ ON" if nsfw_status else "❌ OFF"
+    
+    keyboard = [
+        [InlineKeyboardButton(f"🔞 NSFW Mode: {status_text}", callback_data='toggle_nsfw')],
+        [InlineKeyboardButton("🔙 Close", callback_data='close_settings')]
+    ]
+    
+    msg_text = (
+        "⚙️ **User Settings**\n\n"
+        "Control your experience here.\n"
+        "⚠️ *NSFW Mode allows explicit/18+ content.*"
+    )
+    
+    # മെനു കാണിക്കുന്നു
+    if update.callback_query:
+        await update.callback_query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    else:
+        await message.reply_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def toggle_nsfw_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    
+    if not establish_db_connection():
+        await query.answer("Database Error!", show_alert=True)
+        return
+
+    # നിലവിലെ അവസ്ഥ (True/False) എടുക്കുന്നു
+    user_doc = db_collection_users.find_one({'user_id': user_id})
+    current_status = user_doc.get('nsfw_enabled', False) if user_doc else False
+    
+    # അവസ്ഥ നേരെ തിരിച്ചിടുന്നു (ON ആണെങ്കിൽ OFF, OFF ആണെങ്കിൽ ON)
+    new_status = not current_status
+    
+    # ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
+    db_collection_users.update_one(
+        {'user_id': user_id},
+        {'$set': {'nsfw_enabled': new_status}},
+        upsert=True
+    )
+    
+    # ഉപയോക്താവിനെ അറിയിക്കുന്നു
+    status_msg = "NSFW Enabled 🥵" if new_status else "NSFW Disabled 😇"
+    await query.answer(status_msg)
+    
+    # മെനു റിഫ്രഷ് ചെയ്യുന്നു (പുതിയ മാറ്റം കാണിക്കാൻ)
+    await settings_command(update, context)
+
+async def close_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.message.delete()
 
 # 🍷 VIRTUAL DATE MODE HANDLER
 async def start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -639,7 +703,32 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     
+    # --- EXISTING CODE ---
+    if query.data.startswith("set_"):
+        await set_character_handler(update, context)
+        return
+    # ... (മറ്റുള്ളവ) ...
+
+    # 👇👇👇 ഈ ഭാഗം പുതിയതായി ചേർക്കുക 👇👇👇
+    if query.data == "settings_menu":
+        await settings_command(update, context)
+        return
+
+    if query.data == "toggle_nsfw":
+        await toggle_nsfw_handler(update, context)
+        return
+
+    if query.data == "close_settings":
+        await close_settings(update, context)
+        return
+    # 👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆
+    
+    if query.data.startswith("plot_"):
+    # ... (ബാക്കി കോഡ് അതുപോലെ നിലനിർത്തുക) ...
+
     # Character/Plot/Game/Date selection logic remains same
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
@@ -929,16 +1018,25 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     if not is_regenerate:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
-    selected_char = "TaeKook" 
+        selected_char = "TaeKook"
     user_persona = "Unknown"
-    
+    nsfw_enabled = False  # 👈 പുതിയ വരി
+
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
-        if user_doc: 
+        if user_doc:
             selected_char = user_doc.get('character', 'TaeKook')
             user_persona = user_doc.get('user_persona', 'Unknown')
-    
+            nsfw_enabled = user_doc.get('nsfw_enabled', False) # 👈 ഡിബിയിൽ നിന്ന് എടുക്കുന്നു
+
     system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
+    
+    # 👇👇👇 NSFW ലോജിക് (ഇതും കൂടെ വരും) 👇👇👇
+    if nsfw_enabled:
+        system_prompt += " [MODE: NSFW/18+ ENABLED. You are allowed to be explicit, spicy, kinky, and use adult language if the context fits. Do not hold back.]"
+    else:
+        system_prompt += " [MODE: SFW (Safe). Keep the conversation romantic and sweet but DO NOT generate explicit sexual content.]"
+get(selected_char, BTS_PERSONAS["TaeKook"])
     
     # 🕒 TIME AWARENESS LOGIC
     ist = pytz.timezone('Asia/Kolkata')
@@ -1023,6 +1121,7 @@ async def post_init(application: Application):
         BotCommand("date", "🍷Virtual Date"),
         BotCommand("imagine", "📸Create Photo"),
         BotCommand("new", "🥵Get New Photo"),
+        BotCommand("settings", "⚙️ Settings"),
         BotCommand("stopmedia", "🔕Stop Photos"),
         BotCommand("allowmedia", "🔔Allow Photos")
     ]
@@ -1049,6 +1148,7 @@ def main():
     application = Application.builder().token(TOKEN).post_init(post_init).build()
     
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(CommandHandler("users", user_count))
     application.add_handler(CommandHandler("user", user_count)) # New Alias
     application.add_handler(CommandHandler("testwish", test_wish)) 
