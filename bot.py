@@ -1015,18 +1015,15 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_doc:
             selected_char = user_doc.get('character', 'TaeKook')
             user_persona = user_doc.get('user_persona', 'Unknown')
-            nsfw_enabled = user_doc.get('nsfw_enabled', False) # 👈 ഡിബിയിൽ നിന്ന് എടുക്കുന്നു
+                        nsfw_enabled = user_doc.get('nsfw_enabled', False)
 
-    system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
+        system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     
-    # 👇👇👇 NSFW ലോജിക് (ഇതും കൂടെ വരും) 👇👇👇
     if nsfw_enabled:
         system_prompt += " [MODE: NSFW/18+ ENABLED. You are allowed to be explicit, spicy, kinky, and use adult language if the context fits. Do not hold back.]"
     else:
         system_prompt += " [MODE: SFW (Safe). Keep the conversation romantic and sweet but DO NOT generate explicit sexual content.]"
-get(selected_char, BTS_PERSONAS["TaeKook"])
-    
-    # 🕒 TIME AWARENESS LOGIC
+
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
     current_time_str = now.strftime("%I:%M %p")
