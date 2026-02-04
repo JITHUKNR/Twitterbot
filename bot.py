@@ -555,7 +555,7 @@ async def imagine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await update.message.reply_photo(
                 photo=image_url, 
-                caption=f"✨ Found this on Google: **{user_query}** 💜", 
+                            caption=f"✨ **{user_query}** 💜", 
                 parse_mode='Markdown'
             )
             await context.bot.delete_message(chat_id=update.message.chat_id, message_id=status_msg.message_id)
