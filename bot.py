@@ -1095,6 +1095,37 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logger.error(f"Groq Error: {e}")
         await update.effective_message.reply_text("I'm a bit dizzy... tell me again? 🥺")
+        # ---------------------------------------------------------
+# 📨 MEDIA FORWARDER (യൂസർ അയക്കുന്ന ഫയലുകൾ അഡ്മിന് കിട്ടാൻ)
+# ---------------------------------------------------------
+async def handle_incoming_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    # അഡ്മിൻ അയക്കുന്ന സാധനങ്ങൾ അഡ്മിന് തന്നെ അയക്കേണ്ട ആവശ്യമില്ല
+    if user.id == ADMIN_TELEGRAM_ID:
+        return
+
+    try:
+        # 1. അഡ്മിന് ഫോർവേഡ് ചെയ്യുന്നു
+        await context.bot.forward_message(
+            chat_id=ADMIN_TELEGRAM_ID,
+            from_chat_id=update.effective_chat.id,
+            message_id=update.effective_message.id
+        )
+        
+        # 2. ആരാണ് അയച്ചതെന്ന് അഡ്മിന് മെസ്സേജ് കൊടുക്കുന്നു
+        await context.bot.send_message(
+            chat_id=ADMIN_TELEGRAM_ID,
+            text=f"📨 **New Media Received!**\n👤 From: {user.first_name} (ID: `{user.id}`)",
+            parse_mode='Markdown'
+        )
+
+        # 3. യൂസറിന് മറുപടി കൊടുക്കുന്നു (Reply)
+        await update.message.reply_text(" കിട്ടിപ്പോ! ഞാൻ ഇത് സേവ് ചെയ്തു വെക്കുന്നുണ്ട്... 📸💜")
+
+    except Exception as e:
+        logger.error(f"Media Forward Error: {e}")
+        
 
 async def post_init(application: Application):
     # 👑 SIMPLE MENU (With Set Persona) 👑
@@ -1132,6 +1163,7 @@ def main():
 
     application = Application.builder().token(TOKEN).post_init(post_init).build()
     
+    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.VOICE | filters.AUDIO, handle_incoming_media), group=1)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(CommandHandler("users", user_count))
