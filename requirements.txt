@@ -3,3 +3,4 @@ groq
 pymongo
 requests
 pytz
+duckduckgo-search
