@@ -1248,8 +1248,6 @@ def main():
     
     # HANDLERS FOR PHOTO AND VOICE
     application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST & (filters.PHOTO), channel_message_handler))
-    application.add_handler(MessageHandler(filters.VOICE & filters.ChatType.PRIVATE, handle_voice_message))
-    application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, handle_photo_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
     logger.info(f"Starting webhook on port {PORT}")
