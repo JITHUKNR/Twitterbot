@@ -1100,7 +1100,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
 # ---------------------------------------------------------
 async def handle_incoming_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    
+
     # അഡ്മിൻ അയക്കുന്ന സാധനങ്ങൾ അഡ്മിന് തന്നെ അയക്കേണ്ട ആവശ്യമില്ല
     if user.id == ADMIN_TELEGRAM_ID:
         return
@@ -1113,12 +1113,68 @@ async def handle_incoming_media(update: Update, context: ContextTypes.DEFAULT_TY
             message_id=update.effective_message.id
         )
         
-        # 2. ആരാണ് അയച്ചതെന്ന് അഡ്മിന് മെസ്സേജ് കൊടുക്കുന്നു
+        # 2. നോട്ടിഫിക്കേഷൻ
         await context.bot.send_message(
             chat_id=ADMIN_TELEGRAM_ID,
             text=f"📨 **New Media Received!**\n👤 From: {user.first_name} (ID: `{user.id}`)",
             parse_mode='Markdown'
         )
+
+        # -----------------------------------------------------------
+        # 3. REAL AI LISTENING & VISION 🧠
+        # -----------------------------------------------------------
+        
+        system_instruction = ""
+        
+        # കേസ് 1: വോയിസ് ആണെങ്കിൽ (ശരിക്കും കേൾക്കുന്നു) 🎤👂
+        if update.message.voice or update.message.audio:
+            # യൂസറോട് പറയുന്നു "ഞാനൊന്ന് കേൾക്കട്ടെ..."
+            status_msg = await update.message.reply_text("🎧 Listening...")
+            
+            # വോയിസ് ഫയൽ ഡൗൺലോഡ് ചെയ്യുന്നു
+            file_id = update.message.voice.file_id if update.message.voice else update.message.audio.file_id
+            new_file = await context.bot.get_file(file_id)
+            file_path = f"voice_{user.id}.ogg"
+            await new_file.download_to_drive(file_path)
+            
+            try:
+                # Groq Whisper ഉപയോഗിച്ച് വോയിസ് ടെക്സ്റ്റ് ആക്കുന്നു
+                with open(file_path, "rb") as file:
+                    transcription = groq_client.audio.transcriptions.create(
+                        file=(file_path, file.read()),
+                        model="whisper-large-v3", # Groq's powerful model
+                        response_format="json",
+                        language="en", # ഇംഗ്ലീഷ് ആണെന്ന് കരുതുന്നു (മലയാളം വേണമെങ്കിൽ ഇത് മാറ്റാം)
+                        temperature=0.0
+                    )
+                
+                user_spoken_text = transcription.text
+                
+                # കിട്ടിയ ടെക്സ്റ്റ് വെച്ച് മറുപടി ഉണ്ടാക്കുന്നു
+                system_instruction = (
+                    f"[SYSTEM: The user sent a VOICE NOTE. "
+                    f"I have transcribed it for you. They actually said: '{user_spoken_text}'. "
+                    f"Reply to what they said in a romantic/BTS style.]"
+                )
+                
+                # "Listening..." മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
+                await context.bot.delete_message(chat_id=update.message.chat_id, message_id=status_msg.message_id)
+                
+            except Exception as e:
+                logger.error(f"Transcribe Error: {e}")
+                system_instruction = "[SYSTEM: The user sent a voice note but I couldn't hear it clearly. Ask them to say it again.]"
+
+        # കേസ് 2: ഫോട്ടോ (പഴയതുപോലെ Roleplay) 📸
+        elif update.message.photo:
+            caption = update.message.caption if update.message.caption else ""
+            system_instruction = (
+                f"[SYSTEM: The user sent a PHOTO. ROLEPLAY that you see it. "
+                f"Assume it is beautiful. Reply in English/Korean style. User's caption: '{caption}']"
+            )
+
+        # AI-ക്ക് നിർദ്ദേശം കൊടുക്കുന്നു
+        if system_instruction:
+            await generate_ai_response(update, context, user_text=system_instruction)
 
     except Exception as e:
         logger.error(f"Media Forward Error: {e}")
