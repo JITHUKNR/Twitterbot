@@ -405,6 +405,7 @@ async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task = random.choice(DARE_CHALLENGES)
         await query.edit_message_text(f"**DARE:**\n{task}", parse_mode='Markdown')
 # ⚙️ SETTINGS MENU HANDLER ⚙️
+# ⚙️ SETTINGS MENU HANDLER (Updated with Feedback) ⚙️
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # കമാൻഡ് വഴി വന്നതാണോ അതോ ബട്ടൺ വഴി വന്നതാണോ എന്ന് നോക്കുന്നു
     message = update.message if update.message else update.callback_query.message
@@ -415,13 +416,16 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
         if user_doc:
-            nsfw_status = user_doc.get('nsfw_enabled', False) # Default ആയി OFF ആയിരിക്കും
+            nsfw_status = user_doc.get('nsfw_enabled', False)
 
-    # സ്റ്റാറ്റസ് അനുസരിച്ച് ബട്ടണിലെ ടെക്സ്റ്റ് മാറ്റുന്നു
     status_text = "✅ ON" if nsfw_status else "❌ OFF"
     
+    # 👇 നിങ്ങളുടെ അഡ്മിൻ ലിങ്ക് ഇവിടെ കൊടുക്കുക
+    admin_link = "https://t.me/JITHUKNR" 
+
     keyboard = [
         [InlineKeyboardButton(f"🔞 NSFW Mode: {status_text}", callback_data='toggle_nsfw')],
+        [InlineKeyboardButton("💌 Send Feedback / Report", url=admin_link)], # <-- പുതിയ ബട്ടൺ
         [InlineKeyboardButton("🔙 Close", callback_data='close_settings')]
     ]
     
@@ -431,7 +435,6 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚠️ *NSFW Mode allows explicit/18+ content.*"
     )
     
-    # മെനു കാണിക്കുന്നു
     if update.callback_query:
         await update.callback_query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
