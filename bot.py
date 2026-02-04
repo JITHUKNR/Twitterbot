@@ -528,7 +528,7 @@ async def imagine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("What should I search for? (Example: `/imagine Jungkook cute`) 💜")
         return
 
-    status_msg = await update.message.reply_text(f"🔍 Searching Google for '{user_query}'...")
+            status_msg = await update.message.reply_text("SEARCHING💦")
 
     try:
         # 👇 ഇവിടെ നിങ്ങളുടെ SERPER KEY പേസ്റ്റ് ചെയ്യുക
