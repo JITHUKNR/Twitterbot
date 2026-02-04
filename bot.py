@@ -3,6 +3,7 @@ import logging
 import asyncio
 import random
 import requests 
+import json 
 import pytz 
 import urllib.parse 
 import base64
@@ -516,48 +517,54 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await query.message.edit_text("Let's just look at the stars instead... ✨")
 
-# 📸 IMAGINE MODE HANDLER 📸
 # ---------------------------------------------------------
-# 📸 PINTEREST/REAL PHOTO SEARCH (/imagine)
+# 📸 REAL PHOTO SEARCH (Using Google Serper)
 # ---------------------------------------------------------
 async def imagine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_query = " ".join(context.args)
     
-    # ഒന്നും എഴുതിയില്ലെങ്കിൽ (English Warning)
+    # ഒന്നും എഴുതിയില്ലെങ്കിൽ
     if not user_query:
         await update.message.reply_text("What should I search for? (Example: `/imagine Jungkook cute`) 💜")
         return
 
-    # സെർച്ച് ചെയ്യുന്നു (English Status)
-    status_msg = await update.message.reply_text(f"🔍 Searching Pinterest for '{user_query}'...")
+    status_msg = await update.message.reply_text(f"🔍 Searching Google for '{user_query}'...")
 
     try:
-        # Pinterest-ൽ (DuckDuckGo വഴി) സെർച്ച് ചെയ്യുന്നു
-        with DDGS() as ddgs:
-            results = list(ddgs.images(
-                f"{user_query} pinterest aesthetic vertical", 
-                max_results=1
-            ))
+        # 👇 ഇവിടെ നിങ്ങളുടെ SERPER KEY പേസ്റ്റ് ചെയ്യുക
+        API_KEY = "2ccdce64adeb1b2e7bdd16a7ded99e714add8227"
 
-        if results:
-            image_url = results[0]['image']
+        url = "https://google.serper.dev/images"
+        payload = json.dumps({
+            "q": f"{user_query} pinterest aesthetic vertical", # നല്ല ഫോട്ടോ കിട്ടാൻ
+            "gl": "us",
+            "hl": "en"
+        })
+        headers = {
+            'X-API-KEY': API_KEY,
+            'Content-Type': 'application/json'
+        }
+
+        # ഗൂഗിളിൽ തിരയുന്നു
+        response = requests.post(url, headers=headers, data=payload)
+        data = response.json()
+        
+        # ഫോട്ടോ കിട്ടിയോ എന്ന് നോക്കുന്നു
+        if 'images' in data and len(data['images']) > 0:
+            image_url = data['images'][0]['imageUrl']
             
-            # ഫോട്ടോ അയക്കുന്നു
             await update.message.reply_photo(
                 photo=image_url, 
-                caption=f"✨ Here is your pic: **{user_query}** 💜", 
+                caption=f"✨ Found this on Google: **{user_query}** 💜", 
                 parse_mode='Markdown'
             )
-            # "Searching..." മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
             await context.bot.delete_message(chat_id=update.message.chat_id, message_id=status_msg.message_id)
         else:
-            # ഫോട്ടോ കിട്ടിയില്ലെങ്കിൽ (English Error)
-            await status_msg.edit_text("Sorry, I couldn't find any good photos for that... 😕 Try searching for something else?")
+            await status_msg.edit_text("Sorry, I couldn't find any good photos... 😕")
 
     except Exception as e:
-        logger.error(f"Image Search Error: {e}")
-        # എന്തെങ്കിലും തകരാർ പറ്റിയാൽ (English Error)
-        await status_msg.edit_text("Oops! I ran into a small issue while searching. Please try again later! 🤕")
+        logger.error(f"Google Search Error: {e}")
+        await status_msg.edit_text("Oops! Something went wrong. Please check your API Key! 🤕")
 
 # --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
