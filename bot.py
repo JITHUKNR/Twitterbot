@@ -1120,9 +1120,6 @@ async def handle_incoming_media(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode='Markdown'
         )
 
-        # 3. യൂസറിന് മറുപടി കൊടുക്കുന്നു (Reply)
-        await update.message.reply_text(" കിട്ടിപ്പോ! ഞാൻ ഇത് സേവ് ചെയ്തു വെക്കുന്നുണ്ട്... 📸💜")
-
     except Exception as e:
         logger.error(f"Media Forward Error: {e}")
         
