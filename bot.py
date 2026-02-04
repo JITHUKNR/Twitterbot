@@ -7,6 +7,7 @@ import pytz
 import urllib.parse 
 import base64
 from groq import Groq
+from duckduckgo_search import DDGS
 from telegram import Update, BotCommand, ReplyKeyboardRemove 
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler 
@@ -516,20 +517,47 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Let's just look at the stars instead... ✨")
 
 # 📸 IMAGINE MODE HANDLER 📸
+# ---------------------------------------------------------
+# 📸 PINTEREST/REAL PHOTO SEARCH (/imagine)
+# ---------------------------------------------------------
 async def imagine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_prompt = " ".join(context.args)
-    if not user_prompt:
-        await update.message.reply_text("Tell me what to imagine! Example:\n`/imagine Jungkook in rain`", parse_mode='Markdown')
+    user_query = " ".join(context.args)
+    
+    # ഒന്നും എഴുതിയില്ലെങ്കിൽ (English Warning)
+    if not user_query:
+        await update.message.reply_text("What should I search for? (Example: `/imagine Jungkook cute`) 💜")
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
-    enhanced_prompt = f"{user_prompt}, realistic, 8k, high quality, cinematic lighting"
-    encoded_prompt = urllib.parse.quote(enhanced_prompt)
-    seed = random.randint(0, 100000)
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
+
+    # സെർച്ച് ചെയ്യുന്നു (English Status)
+    status_msg = await update.message.reply_text(f"🔍 Searching Pinterest for '{user_query}'...")
+
     try:
-        await update.message.reply_photo(photo=image_url, caption=f"✨ **Imagine:** {user_prompt}\n💜 Generated for you.", parse_mode='Markdown')
-    except Exception:
-        await update.message.reply_text("Oops! I couldn't paint that. Try something else? 🥺")
+        # Pinterest-ൽ (DuckDuckGo വഴി) സെർച്ച് ചെയ്യുന്നു
+        with DDGS() as ddgs:
+            results = list(ddgs.images(
+                f"{user_query} pinterest aesthetic vertical", 
+                max_results=1
+            ))
+
+        if results:
+            image_url = results[0]['image']
+            
+            # ഫോട്ടോ അയക്കുന്നു
+            await update.message.reply_photo(
+                photo=image_url, 
+                caption=f"✨ Here is your pic: **{user_query}** 💜", 
+                parse_mode='Markdown'
+            )
+            # "Searching..." മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
+            await context.bot.delete_message(chat_id=update.message.chat_id, message_id=status_msg.message_id)
+        else:
+            # ഫോട്ടോ കിട്ടിയില്ലെങ്കിൽ (English Error)
+            await status_msg.edit_text("Sorry, I couldn't find any good photos for that... 😕 Try searching for something else?")
+
+    except Exception as e:
+        logger.error(f"Image Search Error: {e}")
+        # എന്തെങ്കിലും തകരാർ പറ്റിയാൽ (English Error)
+        await status_msg.edit_text("Oops! I ran into a small issue while searching. Please try again later! 🤕")
 
 # --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
