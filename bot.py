@@ -406,12 +406,11 @@ async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"**DARE:**\n{task}", parse_mode='Markdown')
 # ⚙️ SETTINGS MENU HANDLER ⚙️
 # ⚙️ SETTINGS MENU HANDLER (Updated with Feedback) ⚙️
+# ⚙️ SETTINGS MENU
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # കമാൻഡ് വഴി വന്നതാണോ അതോ ബട്ടൺ വഴി വന്നതാണോ എന്ന് നോക്കുന്നു
     message = update.message if update.message else update.callback_query.message
     user_id = update.effective_user.id
     
-    # ഡാറ്റാബേസിൽ നിന്ന് നിലവിലെ അവസ്ഥ പരിശോധിക്കുന്നു
     nsfw_status = False
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
@@ -420,17 +419,15 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_text = "✅ ON" if nsfw_status else "❌ OFF"
     
-    # 👇 നിങ്ങളുടെ അഡ്മിൻ ലിങ്ക് ഇവിടെ കൊടുക്കുക
-    admin_link = "https://t.me/JITHUKNR" 
-
     keyboard = [
         [InlineKeyboardButton(f"🔞 NSFW Mode: {status_text}", callback_data='toggle_nsfw')],
-        [InlineKeyboardButton("💌 Send Feedback / Report", url=admin_link)], # <-- പുതിയ ബട്ടൺ
+        # 👇 ഈ വരിയിലാണ് മാറ്റം
+        [InlineKeyboardButton("💌 Send Feedback", callback_data='start_feedback_mode')],
         [InlineKeyboardButton("🔙 Close", callback_data='close_settings')]
     ]
     
     msg_text = (
-        "⚙️ **User Settings**\n\n"
+        "⚙️ **Settings**\n\n"
         "Control your experience here.\n"
         "⚠️ *NSFW Mode allows explicit/18+ content.*"
     )
@@ -753,6 +750,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await close_settings(update, context)
         return
 
+        # Feedback മോഡ് ഓൺ ചെയ്യുന്നു
+    if query.data == "start_feedback_mode":
+        context.user_data['waiting_for_feedback'] = True  # ✅ മോഡ് ഓൺ ആയി
+        await query.message.edit_text(
+            "📝 **Feedback Mode ON**\n\n"
+            "Type your message now. Sending one message will automatically switch back to normal chat! 👇",
+            parse_mode='Markdown'
+        )
+        return
+
     # 2. CHARACTER & PLOT SELECTION
     if query.data.startswith("set_"):
         await set_character_handler(update, context)
@@ -921,6 +928,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return
     user_id = update.message.from_user.id
     user_text = update.message.text 
+
+        # --- 💌 FEEDBACK CHECK ---
+    if context.user_data.get('waiting_for_feedback'):
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_TELEGRAM_ID,
+                text=f"📩 **FEEDBACK RECEIVED:**\n👤 From: {update.effective_user.first_name} (`{user_id}`)\n💬: {user_text}",
+                parse_mode='Markdown'
+            )
+            await update.message.reply_text("✅ **Feedback Sent!** Returning to normal chat... 💜")
+        except Exception:
+            await update.message.reply_text("❌ Error sending feedback.")
+        
+        context.user_data['waiting_for_feedback'] = False 
+        return
+    # -------------------------
     
     if establish_db_connection():
          db_collection_users.update_one(
