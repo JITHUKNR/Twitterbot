@@ -418,14 +418,30 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
     choice = query.data
     
+    # ഹിസ്റ്ററി ഉണ്ടെന്ന് ഉറപ്പുവരുത്തുന്നു
+    if user_id not in chat_history:
+        chat_history[user_id] = []
+
     if choice == 'game_truth':
         question = random.choice(TRUTH_QUESTIONS)
-        await query.edit_message_text(f"**TRUTH:**\n{question}", parse_mode='Markdown')
+        text_to_send = f"**TRUTH:**\n{question}"
+        
+        # 👇 ചോദ്യം ബോട്ടിന്റെ മെമ്മറിയിൽ സേവ് ചെയ്യുന്നു
+        chat_history[user_id].append({"role": "assistant", "content": question})
+        
+        await query.edit_message_text(text_to_send, parse_mode='Markdown')
+
     elif choice == 'game_dare':
         task = random.choice(DARE_CHALLENGES)
-        await query.edit_message_text(f"**DARE:**\n{task}", parse_mode='Markdown')
+        text_to_send = f"**DARE:**\n{task}"
+        
+        # 👇 ടാസ്ക് ബോട്ടിന്റെ മെമ്മറിയിൽ സേവ് ചെയ്യുന്നു
+        chat_history[user_id].append({"role": "assistant", "content": task})
+        
+        await query.edit_message_text(text_to_send, parse_mode='Markdown')
 # ⚙️ SETTINGS MENU HANDLER ⚙️
 # ⚙️ SETTINGS MENU HANDLER (Updated with Feedback) ⚙️
 # ⚙️ SETTINGS MENU
