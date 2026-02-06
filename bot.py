@@ -1358,8 +1358,6 @@ async def post_init(application: Application):
     
     ist = pytz.timezone('Asia/Kolkata')
     if application.job_queue:
-        application.job_queue.run_daily(send_morning_wish, time=time(hour=8, minute=0, tzinfo=ist)) 
-        application.job_queue.run_daily(send_night_wish, time=time(hour=22, minute=0, tzinfo=ist))
         
         # FAKE STATUS UPDATE JOB
         application.job_queue.run_daily(send_fake_status, time=time(hour=10, minute=0, tzinfo=ist))
