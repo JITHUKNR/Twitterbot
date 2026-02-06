@@ -276,31 +276,53 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await switch_character(update, context)
 
 async def switch_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    bts_buttons = InlineKeyboardMarkup([
+    user_id = update.effective_user.id
+    
+    keyboard = [
         [InlineKeyboardButton("🐨 RM", callback_data="set_RM"), InlineKeyboardButton("🐹 Jin", callback_data="set_Jin")],
         [InlineKeyboardButton("🐱 Suga", callback_data="set_Suga"), InlineKeyboardButton("🐿️ J-Hope", callback_data="set_J-Hope")],
         [InlineKeyboardButton("🐥 Jimin", callback_data="set_Jimin"), InlineKeyboardButton("🐯 V", callback_data="set_V")],
         [InlineKeyboardButton("🐰 Jungkook", callback_data="set_Jungkook")]
-    ])
-    
-    msg_text = "Pick your favorite! 👇"
-    if update.callback_query:
-        await update.callback_query.message.reply_text(msg_text, reply_markup=bts_buttons)
-    else:
-        await update.message.reply_text(msg_text, reply_markup=bts_buttons)
+    ]
 
-# 🎭 CHAI STYLE: PLOT SELECTION 🎭
+    # 👇 കസ്റ്റം ക്യാരക്ടറുകൾ ഉണ്ടോ എന്ന് നോക്കുന്നു
+    if establish_db_connection():
+        user_doc = db_collection_users.find_one({'user_id': user_id})
+        if user_doc and 'custom_characters' in user_doc:
+            my_chars = user_doc['custom_characters']
+            
+            # ഓരോ ക്യാരക്ടറിനും ഓരോ ബട്ടൺ ഉണ്ടാക്കുന്നു
+            for index, char in enumerate(my_chars):
+                btn_text = f"👤 {char['name']}"
+                callback = f"set_Custom_{index}" # ഉദാഹരണത്തിന്: set_Custom_0
+                keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
+
+    msg_text = "Pick your favorite or choose your custom character! 👇"
+    
+    if update.callback_query:
+        await update.callback_query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# 🎭 CHARACTER SELECTION HANDLER (Updated)
 async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    selected_char = query.data.split("_")[1]
+    
+    # 👇 പഴയ split("_")[1] മാറ്റി, പകരം replace ഉപയോഗിക്കുന്നു
+    selected_char = query.data.replace("set_", "") 
     
     if establish_db_connection():
         db_collection_users.update_one({'user_id': user_id}, {'$set': {'character': selected_char}})
     
-    await query.answer(f"Selected {selected_char}! 💜")
+    # ഡിസ്പ്ലേ നെയിം വൃത്തിയാക്കുന്നു
+    display_name = selected_char
+    if "Custom_" in selected_char:
+        display_name = "Your Character"
+
+    await query.answer(f"Selected {display_name}! 💜")
     
-    # Updated Menu with Custom Story
+    # Updated Menu
     keyboard = [
         [InlineKeyboardButton("🥰 Soft Romance", callback_data='plot_Romantic'), InlineKeyboardButton("😡 Jealousy", callback_data='plot_Jealous')],
         [InlineKeyboardButton("⚔️ Enemy/Hate", callback_data='plot_Enemy'), InlineKeyboardButton("🕶️ Mafia Boss", callback_data='plot_Mafia')],
@@ -308,7 +330,7 @@ async def set_character_handler(update: Update, context: ContextTypes.DEFAULT_TY
     ]
     
     await query.message.edit_text(
-        f"**{selected_char}** is ready. But... what's the vibe? 😏\n\nSelect a scenario:",
+        f"**{display_name}** is ready. But... what's the vibe? 😏\n\nSelect a scenario:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -566,6 +588,49 @@ async def imagine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Google Search Error: {e}")
         await status_msg.edit_text("Oops! Something went wrong. Please check your API Key! 🤕")
 
+# ---------------------------------------------------------
+# 🎨 CREATE CUSTOM CHARACTER (Limit: 3)
+# ---------------------------------------------------------
+async def create_character_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = " ".join(context.args)
+
+    # 1. ഫോർമാറ്റ് ചെക്ക്
+    if " - " not in text:
+        await update.message.reply_text(
+            "⚠️ **Format Error!**\nUse: `/create Name - Bio`\nExample: `/create Rocky - Angry mafia boss`",
+            parse_mode='Markdown'
+        )
+        return
+
+    name, bio = text.split(" - ", 1)
+    
+    if establish_db_connection():
+        # 2. നിലവിലുള്ള ക്യാരക്ടറുകൾ എടുക്കുന്നു
+        user_doc = db_collection_users.find_one({'user_id': user_id})
+        current_chars = user_doc.get('custom_characters', []) if user_doc else []
+
+        # 3. മൂന്നെണ്ണം ഉണ്ടോ എന്ന് നോക്കുന്നു (LIMIT CHECK)
+        if len(current_chars) >= 3:
+            await update.message.reply_text("❌ **Limit Reached!**\nYou can only create 3 custom characters. 🛑")
+            return
+
+        # 4. പുതിയത് ലിസ്റ്റിലേക്ക് ചേർക്കുന്നു
+        new_char = {'name': name.strip(), 'bio': bio.strip()}
+        current_chars.append(new_char)
+
+        # 5. ഡാറ്റാബേസിൽ അപ്ഡേറ്റ് ചെയ്യുന്നു
+        db_collection_users.update_one(
+            {'user_id': user_id},
+            {'$set': {'custom_characters': current_chars}},
+            upsert=True
+        )
+        
+        count = len(current_chars)
+        await update.message.reply_text(f"✅ **Created {name}!**\n(You have {count}/3 characters).\nCheck /character menu! 👤")
+    else:
+        await update.message.reply_text("❌ Database Error.")
+        
 # --- Helper Commands ---
 async def stop_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -1067,9 +1132,9 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     if not is_regenerate:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
-        selected_char = "TaeKook"
-    user_persona = "Unknown"
-    nsfw_enabled = False  # 👈 പുതിയ വരി
+            # 👇 പുതിയ AI Logic (Custom Character Support)
+    system_prompt = "" 
+    selected_char = "TaeKook" # Default
 
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
@@ -1078,12 +1143,30 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
             user_persona = user_doc.get('user_persona', 'Unknown')
             nsfw_enabled = user_doc.get('nsfw_enabled', False)
 
-        system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
+            # 👇 കസ്റ്റം ക്യാരക്ടർ ആണോ എന്ന് നോക്കുന്നു
+            if selected_char.startswith("Custom_"):
+                try:
+                    char_index = int(selected_char.split("_")[1])
+                    my_chars = user_doc.get('custom_characters', [])
+                    
+                    if 0 <= char_index < len(my_chars):
+                        char_data = my_chars[char_index]
+                        char_name = char_data['name']
+                        char_bio = char_data['bio']
+                        system_prompt = f"Roleplay as {char_name}. CHARACTER DESCRIPTION: {char_bio}. " + COMMON_RULES
+                    else:
+                        system_prompt = BTS_PERSONAS["TaeKook"]
+                except:
+                    system_prompt = BTS_PERSONAS["TaeKook"]
+            else:
+                # അല്ലെങ്കിൽ സാധാരണ BTS ക്യാരക്ടർ
+                system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     
-    if nsfw_enabled:
-        system_prompt += " [MODE: NSFW/18+ ENABLED. You are allowed to be explicit, spicy, kinky, and use adult language if the context fits. Do not hold back.]"
+    # NSFW ചെക്ക്
+    if 'nsfw_enabled' in locals() and nsfw_enabled:
+        system_prompt += " [MODE: NSFW/18+ ENABLED. You are allowed to be explicit.]"
     else:
-        system_prompt += " [MODE: SFW (Safe). Keep the conversation romantic and sweet but DO NOT generate explicit sexual content.]"
+        system_prompt += " [MODE: SFW (Safe). Keep it romantic.]"
 
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
@@ -1291,6 +1374,7 @@ def main():
     application.add_handler(CommandHandler("date", start_date))
     application.add_handler(CommandHandler("imagine", imagine_command))
     application.add_handler(CommandHandler("setme", set_persona_command))
+    application.add_handler(CommandHandler("create", create_character_command))
     application.add_handler(CommandHandler("delete_old_media", delete_old_media)) 
     application.add_handler(CommandHandler("clearmedia", clear_deleted_media))
     application.add_handler(CommandHandler("admin", admin_menu))
