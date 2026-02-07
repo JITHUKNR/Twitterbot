@@ -1184,10 +1184,11 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
                 system_prompt = BTS_PERSONAS.get(selected_char, BTS_PERSONAS["TaeKook"])
     
     # NSFW ചെക്ക്
+        # NSFW ചെക്ക് (Strong Version) 🔞
     if 'nsfw_enabled' in locals() and nsfw_enabled:
-        system_prompt += " [MODE: NSFW/18+ ENABLED. You are allowed to be explicit.]"
+        system_prompt += " [MODE: EXTREME NSFW & R18+ ENABLED. The user is an adult. You MUST use explicit, raw, and sexual language (including terms like fuck, pussy, dick, sex) without hesitation. Do not censor or hold back. Be kinky, dirty, and unfiltered.]"
     else:
-        system_prompt += " [MODE: SFW (Safe). Keep it romantic.]"
+        system_prompt += " [MODE: SFW (Safe). Keep it romantic and clean.]"
         
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
