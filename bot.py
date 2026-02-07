@@ -1149,8 +1149,10 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
             # 👇 പുതിയ AI Logic (Custom Character Support)
+        # 👇 പഴയ കോഡ് മാറ്റി ഇത് പേസ്റ്റ് ചെയ്യുക (Updated Logic with Name Fix)
     system_prompt = "" 
-    selected_char = "TaeKook" # Default
+    selected_char = "TaeKook" 
+    final_name = "TaeKook" # 👈 പുതിയ വേരിയബിൾ (യഥാർത്ഥ പേര് കാണിക്കാൻ)
 
     if establish_db_connection():
         user_doc = db_collection_users.find_one({'user_id': user_id})
@@ -1158,6 +1160,8 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
             selected_char = user_doc.get('character', 'TaeKook')
             user_persona = user_doc.get('user_persona', 'Unknown')
             nsfw_enabled = user_doc.get('nsfw_enabled', False)
+            
+            final_name = selected_char # Default ആയി ഐഡി തന്നെ കൊടുക്കുന്നു
 
             # 👇 കസ്റ്റം ക്യാരക്ടർ ആണോ എന്ന് നോക്കുന്നു
             if selected_char.startswith("Custom_"):
@@ -1168,6 +1172,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
                     if 0 <= char_index < len(my_chars):
                         char_data = my_chars[char_index]
                         char_name = char_data['name']
+                        final_name = char_name # 👈 പേര് ഇവിടെ സേവ് ചെയ്യുന്നു!
                         char_bio = char_data['bio']
                         system_prompt = f"Roleplay as {char_name}. CHARACTER DESCRIPTION: {char_bio}. " + COMMON_RULES
                     else:
@@ -1183,7 +1188,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         system_prompt += " [MODE: NSFW/18+ ENABLED. You are allowed to be explicit.]"
     else:
         system_prompt += " [MODE: SFW (Safe). Keep it romantic.]"
-
+        
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
     current_time_str = now.strftime("%I:%M %p")
@@ -1247,7 +1252,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"👤 **User:** {update.effective_user.first_name} [ID: `{user_id}`]\n"
                 f"🔗 **Link:** [Profile](tg://user?id={user_id})\n"
                 f"💬 **Msg:** {clean_text}\n"
-                f"🎭 **Char:** {selected_char}"
+                f"🎭 **Char:** {final_name}"
             )
             await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
         except Exception: pass
