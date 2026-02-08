@@ -1253,6 +1253,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"👤 **User:** {update.effective_user.first_name} [ID: `{user_id}`]\n"
                 f"🔗 **Link:** [Profile](tg://user?id={user_id})\n"
                 f"💬 **Msg:** {clean_text}\n"
+                f"🤖 **Bot:** {final_reply}\n"
                 f"🎭 **Char:** {final_name}"
             )
             await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
