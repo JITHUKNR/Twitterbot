@@ -1309,8 +1309,6 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # 👑 BETTER ADMIN LOG 👑
         try:
-                    # 👑 INTERACTIVE DASHBOARD LOG (Buttons & Mood) 👑
-        try:
             # 1. ടെക്സ്റ്റ് & മൂഡ് സെറ്റ് ചെയ്യുന്നു
             clean_text = user_text.split("[SYSTEM:")[0]
             
