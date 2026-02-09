@@ -53,7 +53,7 @@ ADMIN_TELEGRAM_ID = 7567364364
 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
 # 👇 1. ElevenLabs API Key & Settings
-ELEVEN_API_KEY = "Sk_12e36bf0249d2ab3be00cc62344f11aeca947bccfd3d1221"
+ELEVEN_API_KEY = "sk_12e36bf0249d2ab3be00cc62344f11aeca947bccfd3d1221"
 
 # 👇 2. വോയിസ് ഉള്ളവരുടെ ലിസ്റ്റ്
 VOICE_MAP = {
