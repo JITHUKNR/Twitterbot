@@ -1309,24 +1309,52 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # 👑 BETTER ADMIN LOG 👑
         try:
+                    # 👑 INTERACTIVE DASHBOARD LOG (Buttons & Mood) 👑
+        try:
+            # 1. ടെക്സ്റ്റ് & മൂഡ് സെറ്റ് ചെയ്യുന്നു
             clean_text = user_text.split("[SYSTEM:")[0]
-            msg_count = len(chat_history.get(user_id, []))
             
-            if msg_count < 10: user_level = "👶 Newbie"
-            elif msg_count > 50: user_level = "🌟 Super Fan"
+            # ചെറിയൊരു "Mood Check" (യൂസർ ഹാപ്പിയാണോ?)
+            mood = "😐 Normal"
+            lower_txt = clean_text.lower()
+            if any(w in lower_txt for w in ["love", "thanks", "good", "happy", "great", "nice"]):
+                mood = "💚 Happy"
+            elif any(w in lower_txt for w in ["bad", "stupid", "hate", "ugly", "stop", "angry"]):
+                mood = "💔 Angry/Sad"
+            elif any(w in lower_txt for w in ["fuck", "sex", "nude", "horny", "dick"]):
+                mood = "🔞 Flirty/NSFW"
+
+            # 2. യൂസർ ലെവൽ & വിവരങ്ങൾ
+            msg_count = len(chat_history.get(user_id, []))
+            if msg_count < 10: user_level = "🐣 Newbie"
+            elif msg_count > 50: user_level = "🔥 Legend"
             else: user_level = "👤 Active"
 
-            mode_status = "🔞 NSFW" if locals().get('nsfw_enabled') else "🟢 SFW"
-
+            # 3. ലോഗ് മെസ്സേജ് ഡിസൈൻ
             log_msg = (
-                f"👤 **User:** {update.effective_user.first_name} (ID: `{user_id}`)\n"
-                f"🏷 **Level:** {user_level}\n"
-                f"🔥 **Mode:** {mode_status}\n"
-                f"💬 **Msg:** `{clean_text}`\n"
-                f"🤖 **Bot:** `{final_reply}`\n"
-                f"🎭 **Char:** `{final_name}`"
+                f"📟 **NEW INTERACTION ALERT**\n"
+                f"➖➖➖➖➖➖➖➖➖➖\n"
+                f"👤 **User:** [{update.effective_user.first_name}](tg://user?id={user_id})\n"
+                f"🎭 **Mood:** {mood}\n"
+                f"🏆 **Level:** {user_level} ({msg_count} msgs)\n"
+                f"➖➖➖➖➖➖➖➖➖➖\n"
+                f"💬 **Said:** `{clean_text}`\n"
+                f"🤖 **Reply:** `{final_reply}`\n"
             )
-            await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
+
+            # 4. 👇 ഇതാണ് മാജിക്! (ലോഗിന് താഴെ ബട്ടണുകൾ വരും)
+            # (Reply അടിച്ചാൽ നേരെ അവരുടെ ചാറ്റിൽ പോകും)
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            admin_buttons = [
+                [
+                    InlineKeyboardButton("🔙 Reply to User", url=f"tg://user?id={user_id}"),
+                    InlineKeyboardButton("📂 Profile", url=f"tg://user?id={user_id}")
+                ]
+            ]
+            log_markup = InlineKeyboardMarkup(admin_buttons)
+
+            await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, reply_markup=log_markup, parse_mode='Markdown')
         except Exception:
             pass
 
