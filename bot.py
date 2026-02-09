@@ -1249,13 +1249,28 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         try: 
             # Clean up user text for log (remove system prompts)
             clean_text = user_text.split(" [SYSTEM:")[0]
+                        # 👇 മോഡ് ഏതാണെന്ന് നോക്കുന്നു
+                        # 👇 ലെവൽ കണ്ടുപിടിക്കുന്നു (പുതിയത്)
+            msg_count = len(chat_history.get(user_id, []))
+            if msg_count < 10:
+                user_level = "🆕 Newbie"
+            elif msg_count > 50:
+                user_level = "👑 Super Fan"
+            else:
+                user_level = "👤 Active"
+
+            # 👇 മോഡ് ചെക്ക് ചെയ്യുന്നു (പഴയത്)
+            mode_status = "🔞 NSFW (18+)" if locals().get('nsfw_enabled') else "🟢 SFW (Safe)"
+
             log_msg = (
                 f"👤 **User:** {update.effective_user.first_name} [ID: `{user_id}`]\n"
-                f"🔗 **Link:** [Profile](tg://user?id={user_id})\n"
+                f"🏷️ **Level:** {user_level}\n"
+                f"🔥 **Mode:** {mode_status}\n"
                 f"💬 **Msg:** {clean_text}\n"
                 f"🤖 **Bot:** {final_reply}\n"
                 f"🎭 **Char:** {final_name}"
             )
+
             await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
         except Exception: pass
         
