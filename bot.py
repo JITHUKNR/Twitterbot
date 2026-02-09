@@ -1292,7 +1292,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             await update.effective_message.reply_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
     # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Smart Mode) 🧠
-    user_text_lower = user_text.lower() if user_text else ""
+        user_text_lower = user_text.lower() if user_text else ""
     
     # 1. ലിസ്റ്റിലുള്ള വാക്കുണ്ടോ എന്ന് നോക്കുന്നു (voice, sound, etc.)
     user_wants_voice = any(word in user_text_lower for word in VOICE_TRIGGERS)
