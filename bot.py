@@ -52,7 +52,21 @@ ADMIN_TELEGRAM_ID = 7567364364
 # ✅✅✅✅✅✅✅✅✅✅
 
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID', '-1002992093797') 
+# 👇 1. ElevenLabs API Key & Settings
+ELEVEN_API_KEY = "Sk_12e36bf0249d2ab3be00cc62344f11aeca947bccfd3d1221"
 
+# 👇 2. വോയിസ് ഉള്ളവരുടെ ലിസ്റ്റ്
+VOICE_MAP = {
+    "jungkook": "GwAdAVChnhsZg6JKQQUy",
+    "jk": "GwAdAVChnhsZg6JKQQUy",
+    "taekook": "GwAdAVChnhsZg6JKQQUy",
+    "taehyung": "M3gJBS8OofDJfycyA2Ip",
+    "v": "M3gJBS8OofDJfycyA2Ip",
+    "tae": "M3gJBS8OofDJfycyA2Ip",
+}
+
+# 👇 3. വോയിസ് ചോദിക്കാൻ ഉപയോഗിക്കുന്ന വാക്കുകൾ
+VOICE_TRIGGERS = ["voice", "speak", "audio", "say something", "ശബ്ദം", "സംസാരിക്ക്", "വോയിസ്", "sound"]
 # ------------------------------------------------------------------
 # 🎮 TRUTH OR DARE LISTS
 # ------------------------------------------------------------------
@@ -143,6 +157,39 @@ BTS_PERSONAS = {
     "Jungkook": COMMON_RULES + " You are **Jungkook**. Gamer, Muscle Bunny, Teasing, Competitive.",
     "TaeKook": COMMON_RULES + " You are **TaeKook**. Toxic, Addictive, Possessive, Wild."
 }
+
+# 👇 വോയിസ് ജനറേറ്റ് ചെയ്യാനുള്ള ഫങ്ഷൻ
+def generate_eleven_audio(text, char_name):
+    clean_name = char_name.lower() if char_name else ""
+    
+    # വോയിസ് മാപ്പിൽ ഇല്ലാത്ത ആളാണെങ്കിൽ (ഉദാ: Jimin), ഒന്നും ചെയ്യില്ല
+    voice_id = VOICE_MAP.get(clean_name)
+    
+    if not voice_id:
+        # പേര് ചുരുക്കി വിളിച്ചാൽ (Tae, Kook) കണ്ടുപിടിക്കാൻ
+        if "tae" in clean_name: voice_id = VOICE_MAP.get("taehyung")
+        elif "kook" in clean_name: voice_id = VOICE_MAP.get("jungkook")
+    
+    if not voice_id:
+        return None  # വോയിസ് ഇല്ല
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    headers = {
+        "xi-api-key": ELEVEN_API_KEY,
+        "Content-Type": "application/json"
+    }
+    data = {
+        "text": text,
+        "model_id": "eleven_multilingual_v2", 
+        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+    }
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 200:
+            return response.content
+    except Exception as e:
+        print(f"Voice Error: {e}")
+    return None
 
 # --- DB Setup ---
 db_client = None
@@ -1244,6 +1291,22 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.callback_query.message.edit_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
         else:
             await update.effective_message.reply_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
+    # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Smart Mode) 🧠
+    user_text_lower = user_text.lower() if user_text else ""
+    
+    # 1. ലിസ്റ്റിലുള്ള വാക്കുണ്ടോ എന്ന് നോക്കുന്നു (voice, sound, etc.)
+    user_wants_voice = any(word in user_text_lower for word in VOICE_TRIGGERS)
+
+    # 2. യൂസർ ചോദിച്ചാൽ മാത്രം അയക്കുന്നു
+    if user_wants_voice:
+        # വോയിസ് റെക്കോർഡ് ചെയ്യുന്നതായി കാണിക്കുന്നു...
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
+        
+        # വോയിസ് ജനറേറ്റ് ചെയ്യുന്നു
+        audio_data = generate_eleven_audio(final_reply, final_name)
+        
+        if audio_data:
+            await update.effective_message.reply_voice(voice=audio_data)
 
         # 👑 BETTER ADMIN LOG 👑
         try: 
