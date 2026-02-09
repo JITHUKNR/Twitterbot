@@ -1298,15 +1298,18 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     user_wants_voice = any(word in user_text_lower for word in VOICE_TRIGGERS)
 
     # 2. യൂസർ ചോദിച്ചാൽ മാത്രം അയക്കുന്നു
+        # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Updated Logic)
     if user_wants_voice:
-        # വോയിസ് റെക്കോർഡ് ചെയ്യുന്നതായി കാണിക്കുന്നു...
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
-        
-        # വോയിസ് ജനറേറ്റ് ചെയ്യുന്നു
-        audio_data = generate_eleven_audio(final_reply, final_name)
-        
-        if audio_data:
-            await update.effective_message.reply_voice(voice=audio_data)
+        try:
+            audio_data = generate_eleven_audio(final_reply, final_name)
+            if audio_data:
+                await update.effective_message.reply_voice(voice=audio_data)
+            else:
+                # വോയിസ് ജനറേറ്റ് ചെയ്യാൻ പറ്റിയില്ലെങ്കിൽ എറർ കാണിക്കും
+                await update.effective_message.reply_text("⚠️ Voice Failed! Check API Key or Quota.")
+        except Exception as e:
+            await update.effective_message.reply_text(f"⚠️ Error: {e}")
 
         # 👑 BETTER ADMIN LOG 👑
         try: 
