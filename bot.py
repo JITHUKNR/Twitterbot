@@ -1307,48 +1307,48 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as e:
                 await update.effective_message.reply_text(f"⚠️ Error: {e}")
 
-        # 👑 BETTER ADMIN LOG 👑
+                # 👑 FORENSIC INTELLIGENCE LOG (Fixed) 👑
         try:
-            # 1. ടെക്സ്റ്റ് & മൂഡ് സെറ്റ് ചെയ്യുന്നു
+            # 1. നിലവിലെ മെസ്സേജ്
             clean_text = user_text.split("[SYSTEM:")[0]
-            
-            # ചെറിയൊരു "Mood Check" (യൂസർ ഹാപ്പിയാണോ?)
-            mood = "😐 Normal"
+
+            # 2. തൊട്ടു മുമ്പ് നടന്നത് (Context History)
+            history = chat_history.get(user_id, [])
+            prev_bot_msg = "None (Start of chat)"
+            if len(history) >= 3:
+                prev_bot_msg = history[-2]['content'][:50] + "..." 
+
+            # 3. വികാരങ്ങളുടെ ഗ്രാഫ് (Sentiment Bar)
             lower_txt = clean_text.lower()
-            if any(w in lower_txt for w in ["love", "thanks", "good", "happy", "great", "nice"]):
-                mood = "💚 Happy"
-            elif any(w in lower_txt for w in ["bad", "stupid", "hate", "ugly", "stop", "angry"]):
-                mood = "💔 Angry/Sad"
-            elif any(w in lower_txt for w in ["fuck", "sex", "nude", "horny", "dick"]):
-                mood = "🔞 Flirty/NSFW"
+            if any(w in lower_txt for w in ["love", "kiss", "marry", "cute"]):
+                mood_bar = "💚💚💚💚🤍 (Positive)"
+            elif any(w in lower_txt for w in ["hate", "kill", "angry", "bad"]):
+                mood_bar = "❤️❤️❤️❤️🤍 (Negative)"
+            elif any(w in lower_txt for w in ["sex", "fuck", "nude"]):
+                mood_bar = "🔞🔞🔞🔞🔞 (NSFW)"
+            else:
+                mood_bar = "💙💙🤍🤍🤍 (Neutral)"
 
-            # 2. യൂസർ ലെവൽ & വിവരങ്ങൾ
-            msg_count = len(chat_history.get(user_id, []))
-            if msg_count < 10: user_level = "🐣 Newbie"
-            elif msg_count > 50: user_level = "🔥 Legend"
-            else: user_level = "👤 Active"
-
-            # 3. ലോഗ് മെസ്സേജ് ഡിസൈൻ
+            # 4. ലോഗ് ഡിസൈൻ
             log_msg = (
-                f"📟 **NEW INTERACTION ALERT**\n"
-                f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"👤 **User:** [{update.effective_user.first_name}](tg://user?id={user_id})\n"
-                f"🎭 **Mood:** {mood}\n"
-                f"🏆 **Level:** {user_level} ({msg_count} msgs)\n"
-                f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"💬 **Said:** `{clean_text}`\n"
-                f"🤖 **Reply:** `{final_reply}`\n"
+                f"🕵️ **FORENSIC REPORT**\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👤 **Subject:** [{update.effective_user.first_name}](tg://user?id={user_id})\n"
+                f"🧠 **Mood:** {mood_bar}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"⏮️ **Previous Context:**\n"
+                f"🤖 Bot: _{prev_bot_msg}_\n"
+                f"⬇️\n"
+                f"📨 **User Reply:**\n"
+                f"🗣️ User: `{clean_text}`\n"
+                f"⬇️\n"
+                f"📤 **Current Response:**\n"
+                f"🤖 Bot: `{final_reply[:100]}...`\n"
             )
 
-            # 4. 👇 ഇതാണ് മാജിക്! (ലോഗിന് താഴെ ബട്ടണുകൾ വരും)
-            # (Reply അടിച്ചാൽ നേരെ അവരുടെ ചാറ്റിൽ പോകും)
-            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-            
+            # 5. ആക്ഷൻ ബട്ടണുകൾ
             admin_buttons = [
-                [
-                    InlineKeyboardButton("🔙 Reply to User", url=f"tg://user?id={user_id}"),
-                    InlineKeyboardButton("📂 Profile", url=f"tg://user?id={user_id}")
-                ]
+                [InlineKeyboardButton("👁️ View Full Chat", url=f"tg://user?id={user_id}")]
             ]
             log_markup = InlineKeyboardMarkup(admin_buttons)
 
