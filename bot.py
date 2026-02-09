@@ -1284,65 +1284,55 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         
         chat_history[user_id].append({"role": "assistant", "content": final_reply})
         
-        # 🔄 REGENERATE BUTTON 🔄
+                # 🔄 REGENERATE BUTTON 🔄
         regen_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Change Reply", callback_data="regen_msg")]])
-        
+
         if is_regenerate and update.callback_query:
             await update.callback_query.message.edit_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
         else:
             await update.effective_message.reply_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
-    # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Smart Mode) 🧠
-        user_text_lower = user_text.lower() if user_text else ""
-    
-    # 1. ലിസ്റ്റിലുള്ള വാക്കുണ്ടോ എന്ന് നോക്കുന്നു (voice, sound, etc.)
-    user_wants_voice = any(word in user_text_lower for word in VOICE_TRIGGERS)
 
-    # 2. യൂസർ ചോദിച്ചാൽ മാത്രം അയക്കുന്നു
-        # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Updated Logic)
-    if user_wants_voice:
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
-        try:
-            audio_data = generate_eleven_audio(final_reply, final_name)
-            if audio_data:
-                await update.effective_message.reply_voice(voice=audio_data)
-            else:
-                # വോയിസ് ജനറേറ്റ് ചെയ്യാൻ പറ്റിയില്ലെങ്കിൽ എറർ കാണിക്കും
-                await update.effective_message.reply_text("⚠️ Voice Failed! Check API Key or Quota.")
-        except Exception as e:
-            await update.effective_message.reply_text(f"⚠️ Error: {e}")
+        # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Smart Mode)
+        user_text_lower = user_text.lower() if user_text else ""
+        user_wants_voice = any(word in user_text_lower for word in VOICE_TRIGGERS)
+
+        if user_wants_voice:
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
+            try:
+                audio_data = generate_eleven_audio(final_reply, final_name)
+                if audio_data:
+                    await update.effective_message.reply_voice(voice=audio_data)
+                else:
+                    await update.effective_message.reply_text("⚠️ Voice Failed! Check API Key or Quota.")
+            except Exception as e:
+                await update.effective_message.reply_text(f"⚠️ Error: {e}")
 
         # 👑 BETTER ADMIN LOG 👑
-        try: 
-            # Clean up user text for log (remove system prompts)
-            clean_text = user_text.split(" [SYSTEM:")[0]
-                        # 👇 മോഡ് ഏതാണെന്ന് നോക്കുന്നു
-                        # 👇 ലെവൽ കണ്ടുപിടിക്കുന്നു (പുതിയത്)
+        try:
+            clean_text = user_text.split("[SYSTEM:")[0]
             msg_count = len(chat_history.get(user_id, []))
-            if msg_count < 10:
-                user_level = "🆕 Newbie"
-            elif msg_count > 50:
-                user_level = "👑 Super Fan"
-            else:
-                user_level = "👤 Active"
+            
+            if msg_count < 10: user_level = "👶 Newbie"
+            elif msg_count > 50: user_level = "🌟 Super Fan"
+            else: user_level = "👤 Active"
 
-            # 👇 മോഡ് ചെക്ക് ചെയ്യുന്നു (പഴയത്)
-            mode_status = "🔞 NSFW (18+)" if locals().get('nsfw_enabled') else "🟢 SFW (Safe)"
+            mode_status = "🔞 NSFW" if locals().get('nsfw_enabled') else "🟢 SFW"
 
             log_msg = (
-                f"👤 **User:** {update.effective_user.first_name} [ID: `{user_id}`]\n"
-                f"🏷️ **Level:** {user_level}\n"
+                f"👤 **User:** {update.effective_user.first_name} (ID: `{user_id}`)\n"
+                f"🏷 **Level:** {user_level}\n"
                 f"🔥 **Mode:** {mode_status}\n"
-                f"💬 **Msg:** {clean_text}\n"
-                f"🤖 **Bot:** {final_reply}\n"
-                f"🎭 **Char:** {final_name}"
+                f"💬 **Msg:** `{clean_text}`\n"
+                f"🤖 **Bot:** `{final_reply}`\n"
+                f"🎭 **Char:** `{final_name}`"
             )
-
             await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
-        except Exception: pass
-        
+        except Exception:
+            pass
+
     except Exception as e:
         logger.error(f"Groq Error: {e}")
-        await update.effective_message.reply_text("I'm a bit dizzy... tell me again? 🥺")
+        await update.effective_message.reply_text("I'm a bit dizzy... tell me again? 😵‍💫")
         # ---------------------------------------------------------
 # 📨 MEDIA FORWARDER (യൂസർ അയക്കുന്ന ഫയലുകൾ അഡ്മിന് കിട്ടാൻ)
 # ---------------------------------------------------------
