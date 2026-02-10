@@ -1442,6 +1442,8 @@ async def handle_incoming_media(update: Update, context: ContextTypes.DEFAULT_TY
         
 
 async def post_init(application: Application):
+        # 👇 ബോട്ട് ഓൺ ആകുമ്പോൾ അഡ്മിന് മെസ്സേജ് അയക്കുന്നു
+    await application.bot.send_message(chat_id=ADMIN_TELEGRAM_ID, text="✅ **Bot Restarted & Updated!** 🚀\nReady to serve.", parse_mode='Markdown')
     # 👑 SIMPLE MENU (With Set Persona) 👑
     commands = [
         BotCommand("start", "🔄Restart Bot"),
