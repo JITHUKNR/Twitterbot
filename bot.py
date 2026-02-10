@@ -1293,6 +1293,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.effective_message.reply_text(final_reply, reply_markup=regen_markup, parse_mode='Markdown')
 
         # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Smart Mode)
+                # 👇 വോയിസ് അയക്കണോ എന്ന് തീരുമാനിക്കുന്നു (Smart Mode)
         user_text_lower = user_text.lower() if user_text else ""
         user_wants_voice = any(word in user_text_lower for word in VOICE_TRIGGERS)
 
@@ -1307,52 +1308,26 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as e:
                 await update.effective_message.reply_text(f"⚠️ Error: {e}")
 
-                # 👑 FORENSIC INTELLIGENCE LOG (Fixed) 👑
+        # 👑 CLASSIC LOG + NSFW STATUS 👑
         try:
-            # 1. നിലവിലെ മെസ്സേജ്
-            clean_text = user_text.split("[SYSTEM:")[0]
+            # 1. ടെക്സ്റ്റ് വൃത്തിയാക്കുന്നു
+            clean_text = user_text.split("[SYSTEM:")[0].strip()
 
-            # 2. തൊട്ടു മുമ്പ് നടന്നത് (Context History)
-            history = chat_history.get(user_id, [])
-            prev_bot_msg = "None (Start of chat)"
-            if len(history) >= 3:
-                prev_bot_msg = history[-2]['content'][:50] + "..." 
+            # 2. NSFW ഓൺ ആണോ എന്ന് നോക്കുന്നു
+            nsfw_status = "🔞 ON" if locals().get('nsfw_enabled') else "🟢 OFF"
 
-            # 3. വികാരങ്ങളുടെ ഗ്രാഫ് (Sentiment Bar)
-            lower_txt = clean_text.lower()
-            if any(w in lower_txt for w in ["love", "kiss", "marry", "cute"]):
-                mood_bar = "💚💚💚💚🤍 (Positive)"
-            elif any(w in lower_txt for w in ["hate", "kill", "angry", "bad"]):
-                mood_bar = "❤️❤️❤️❤️🤍 (Negative)"
-            elif any(w in lower_txt for w in ["sex", "fuck", "nude"]):
-                mood_bar = "🔞🔞🔞🔞🔞 (NSFW)"
-            else:
-                mood_bar = "💙💙🤍🤍🤍 (Neutral)"
-
-            # 4. ലോഗ് ഡിസൈൻ
+            # 3. ലോഗ് മെസ്സേജ് (കൃത്യം പഴയ സ്റ്റൈലിൽ)
             log_msg = (
-                f"🕵️ **FORENSIC REPORT**\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👤 **Subject:** [{update.effective_user.first_name}](tg://user?id={user_id})\n"
-                f"🧠 **Mood:** {mood_bar}\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"⏮️ **Previous Context:**\n"
-                f"🤖 Bot: _{prev_bot_msg}_\n"
-                f"⬇️\n"
-                f"📨 **User Reply:**\n"
-                f"🗣️ User: `{clean_text}`\n"
-                f"⬇️\n"
-                f"📤 **Current Response:**\n"
-                f"🤖 Bot: `{final_reply[:100]}...`\n"
+                f"👤 User: {update.effective_user.first_name}  ID: `{user_id}`\n"
+                f"🔥 NSFW: {nsfw_status}\n"
+                f"🔗 Link: [Profile](tg://user?id={user_id})\n"
+                f"💬 Msg: {clean_text}\n"
+                f"🤖 Bot: {final_reply}\n"
+                f"🎭 Char: {final_name}"
             )
 
-            # 5. ആക്ഷൻ ബട്ടണുകൾ
-            admin_buttons = [
-                [InlineKeyboardButton("👁️ View Full Chat", url=f"tg://user?id={user_id}")]
-            ]
-            log_markup = InlineKeyboardMarkup(admin_buttons)
-
-            await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, reply_markup=log_markup, parse_mode='Markdown')
+            # 4. അഡ്മിന് അയക്കുന്നു
+            await context.bot.send_message(ADMIN_TELEGRAM_ID, log_msg, parse_mode='Markdown')
         except Exception:
             pass
 
@@ -1455,8 +1430,6 @@ async def post_init(application: Application):
         BotCommand("imagine", "📸Create Photo"),
         BotCommand("new", "🥵Get New Photo"),
         BotCommand("settings", "⚙️ Settings"),
-        BotCommand("stopmedia", "🔕Stop Photos"),
-        BotCommand("allowmedia", "🔔Allow Photos")
     ]
     await application.bot.set_my_commands(commands)
     
