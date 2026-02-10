@@ -984,9 +984,9 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if media_file_id:
                 if is_video:
-                    await context.bot.send_video(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
+                    await context.bot.send_video(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, parse_mode='Markdown', protect_content=True)
                 else:
-                    await context.bot.send_photo(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
+                    await context.bot.send_photo(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, parse_mode='Markdown', protect_content=True)
             else:
                 await context.bot.send_message(uid, f"📢 **Chai Update:**\n\n{msg_or_caption}", reply_markup=reply_markup, parse_mode='Markdown')
             return True
