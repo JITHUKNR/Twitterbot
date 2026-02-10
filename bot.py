@@ -1443,6 +1443,25 @@ async def post_init(application: Application):
 
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
+# 👇 അഡ്മിന് മാത്രം ടെസ്റ്റ് മെസ്സേജ് അയക്കാനുള്ള പുതിയ കമാൻഡ്
+async def test_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_TELEGRAM_ID: return
+    
+    raw_text = update.message.text.replace('/test', '').strip()
+    if not raw_text:
+        await update.message.reply_text("⚠️ Usage: `/test Hello`")
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_TELEGRAM_ID, 
+            text=f"📢 **TEST PREVIEW**\n━━━━━━━━━━\n{raw_text}\n━━━━━━━━━━", 
+            parse_mode='Markdown'
+        )
+        await update.message.reply_text("✅ Test Sent!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
 
 def main():
     if not all([TOKEN, WEBHOOK_URL, GROQ_API_KEY]):
@@ -1459,6 +1478,7 @@ def main():
     application.add_handler(CommandHandler("testwish", test_wish)) 
     application.add_handler(CommandHandler("broadcast", broadcast_message)) 
     # REMOVED BMEDIA HANDLER HERE
+    application.add_handler(CommandHandler("test", test_broadcast))
     application.add_handler(CommandHandler("forcestatus", force_status)) # New Test Command
     application.add_handler(CommandHandler("new", send_new_photo)) 
     application.add_handler(CommandHandler("game", start_game)) 
