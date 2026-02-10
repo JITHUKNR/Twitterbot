@@ -935,10 +935,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(query.from_user.id, "🆔 **File ID Finder:**\nJust send ANY file (Photo, Audio, Video) to this bot.\nIt will automatically reply with the File ID.")
 
 # 📢 SMART BROADCAST (TEXT & MEDIA IN ONE COMMAND) 📢
+# 🚀 TURBO BROADCAST (FAST & BATCH MODE) 🚀
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_TELEGRAM_ID: return
     
-    # 1. Check for Reply Media
+    # 1. മീഡിയ ഉണ്ടോ എന്ന് നോക്കുന്നു
     reply = update.message.reply_to_message
     media_file_id = None
     is_video = False
@@ -950,13 +951,12 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media_file_id = reply.video.file_id
             is_video = True
 
-    # 2. Extract Text
+    # 2. ടെക്സ്റ്റ് എടുക്കുന്നു
     raw_text = update.effective_message.text.replace('/broadcast', '').strip()
     
-    # ⚠️ ERROR FIX: Using single line string to avoid syntax errors
     if not media_file_id and not raw_text:
         await update.effective_message.reply_text(
-            "❌ **Usage:**\nType `/broadcast Message | Button-Link`\nOr Reply to Media with `/broadcast Caption`",
+            "❌ **Usage:**\nType `/broadcast Message`\nOr Reply to Media with `/broadcast Caption`",
             parse_mode='Markdown'
         )
         return
@@ -965,39 +965,61 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if media_file_id and not msg_or_caption:
         msg_or_caption = "Special Update! 💜"
 
-    # 3. Button Logic
+    # 3. ലിങ്ക് ബട്ടൺ ഉണ്ടോ എന്ന് നോക്കുന്നു (Optional)
     reply_markup = None
     if "|" in raw_text:
         parts = raw_text.split("|")
         msg_or_caption = parts[0].strip()
-        
-        if len(parts) > 1:
-            btn_part = parts[1].strip()
-            if "-" in btn_part:
-                try:
+        # Note: ബട്ടൺ ലിങ്ക് ആണെങ്കിൽ മാത്രമേ വർക്ക് ആകൂ
+        if len(parts) > 1 and "http" in parts[1]:
+            try:
+                btn_part = parts[1].strip()
+                if "-" in btn_part:
                     btn_txt, btn_url = btn_part.split("-", 1)
                     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())]])
-                except: pass
+            except: pass
 
-    # 4. Sending Logic
+    # 4. അയക്കാനുള്ള ഫങ്ഷൻ (Helper)
+    async def send_to_user(uid):
+        try:
+            if media_file_id:
+                if is_video:
+                    await context.bot.send_video(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
+                else:
+                    await context.bot.send_photo(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
+            else:
+                await context.bot.send_message(uid, f"📢 **Chai Update:**\n\n{msg_or_caption}", reply_markup=reply_markup, parse_mode='Markdown')
+            return True
+        except Exception: # ബ്ലോക്ക് ചെയ്തവർക്ക് അയക്കില്ല
+            return False
+
+    # 5. ബാച്ച് ആയി അയക്കുന്നു (The Fast Part)
     if establish_db_connection():
         users = [d['user_id'] for d in db_collection_users.find({}, {'user_id': 1})]
-        sent = 0
-        status_msg = await update.effective_message.reply_text(f"⏳ Broadcasting to {len(users)} users...", parse_mode='Markdown')
+        total_users = len(users)
         
-        for uid in users:
-            try:
-                if media_file_id:
-                    if is_video:
-                        await context.bot.send_video(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
-                    else:
-                        await context.bot.send_photo(uid, media_file_id, caption=msg_or_caption, reply_markup=reply_markup, protect_content=True)
-                else:
-                    await context.bot.send_message(uid, f"📢 **Chai Update:**\n\n{msg_or_caption}", reply_markup=reply_markup, parse_mode='Markdown')
-                sent += 1
-            except Exception: pass
+        status_msg = await update.effective_message.reply_text(f"🚀 **Starting Fast Broadcast to {total_users} users...**", parse_mode='Markdown')
+        
+        sent_count = 0
+        batch_size = 20 # ഒരേ സമയം 20 പേർക്ക് അയക്കും
+        
+        for i in range(0, total_users, batch_size):
+            batch = users[i:i + batch_size]
+            tasks = [send_to_user(uid) for uid in batch]
             
-        await status_msg.edit_text(f"✅ **Broadcast Complete!**\nSent to {sent} users.", parse_mode='Markdown')
+            # 20 പേർക്ക് ഒന്നിച്ച് അയക്കുന്നു
+            results = await asyncio.gather(*tasks)
+            sent_count += results.count(True)
+            
+            # ഇടയ്ക്ക് സ്റ്റാറ്റസ് അപ്ഡേറ്റ് ചെയ്യുന്നു (ഓരോ 100 പേരിലും)
+            if i % 100 == 0:
+                try: await status_msg.edit_text(f"🚀 Sending... {sent_count}/{total_users}")
+                except: pass
+            
+            # ടെലഗ്രാം ബ്ലോക്ക് ചെയ്യാതിരിക്കാൻ ചെറിയ വിശ്രമം
+            await asyncio.sleep(1.5)
+            
+        await status_msg.edit_text(f"✅ **Broadcast Complete!**\nSent to: {sent_count}\nFailed/Blocked: {total_users - sent_count}", parse_mode='Markdown')
 
 async def get_media_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == ADMIN_TELEGRAM_ID:
