@@ -1444,22 +1444,62 @@ async def post_init(application: Application):
     if ADMIN_TELEGRAM_ID: 
         application.create_task(run_hourly_cleanup(application))
 # 👇 അഡ്മിന് മാത്രം ടെസ്റ്റ് മെസ്സേജ് അയക്കാനുള്ള പുതിയ കമാൻഡ്
+# 👇 അഡ്മിന് ഫോട്ടോയും ബട്ടണും ടെസ്റ്റ് ചെയ്യാനുള്ള പുതിയ കമാൻഡ്
 async def test_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_TELEGRAM_ID: return
-    
+    if update.effective_user.id != ADMIN_TELEGRAM_ID: return
+
+    # 1. റിപ്ലൈ വഴി മീഡിയ ഉണ്ടോ എന്ന് നോക്കുന്നു
+    reply = update.message.reply_to_message
+    media_file_id = None
+    is_video = False
+
+    if reply:
+        if reply.photo:
+            media_file_id = reply.photo[-1].file_id
+        elif reply.video:
+            media_file_id = reply.video.file_id
+            is_video = True
+
+    # 2. ടെക്സ്റ്റ് എടുക്കുന്നു
     raw_text = update.message.text.replace('/test', '').strip()
-    if not raw_text:
-        await update.message.reply_text("⚠️ Usage: `/test Hello`")
+
+    # മീഡിയയും ഇല്ല, ടെക്സ്റ്റും ഇല്ലെങ്കിൽ എറർ
+    if not media_file_id and not raw_text:
+        await update.message.reply_text("⚠️ Usage: `/test Message | Button-Link`\nOr Reply to Media")
         return
 
+    msg_or_caption = raw_text
+    if media_file_id and not msg_or_caption:
+        msg_or_caption = "Test Caption 💜"
+
+    # 3. ബട്ടൺ ലോജിക് (Button Logic)
+    reply_markup = None
+    if "|" in raw_text:
+        parts = raw_text.split("|")
+        msg_or_caption = parts[0].strip()
+
+        if len(parts) > 1:
+            btn_part = parts[1].strip()
+            if "-" in btn_part:
+                try:
+                    btn_txt, btn_url = btn_part.split("-", 1)
+                    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(btn_txt.strip(), url=btn_url.strip())]])
+                except: pass
+
+    # 4. അഡ്മിന് അയച്ചു കാണിക്കുന്നു
     try:
-        await context.bot.send_message(
-            chat_id=ADMIN_TELEGRAM_ID, 
-            text=f"📢 **TEST PREVIEW**\n━━━━━━━━━━\n{raw_text}\n━━━━━━━━━━", 
-            parse_mode='Markdown'
-        )
-        await update.message.reply_text("✅ Test Sent!")
+        # ഹെഡർ ചേർക്കുന്നു
+        final_msg = f"📢 **TEST PREVIEW**\n━━━━━━━━━━\n{msg_or_caption}\n━━━━━━━━━━"
+
+        if media_file_id:
+            if is_video:
+                await context.bot.send_video(ADMIN_TELEGRAM_ID, media_file_id, caption=final_msg, reply_markup=reply_markup, parse_mode='Markdown')
+            else:
+                await context.bot.send_photo(ADMIN_TELEGRAM_ID, media_file_id, caption=final_msg, reply_markup=reply_markup, parse_mode='Markdown')
+        else:
+            await context.bot.send_message(ADMIN_TELEGRAM_ID, final_msg, reply_markup=reply_markup, parse_mode='Markdown')
+            
+        await update.message.reply_text("✅ Test Sent with Media/Buttons!")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
