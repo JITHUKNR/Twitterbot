@@ -1308,8 +1308,9 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         system_prompt += f" [CRITICAL RULE: You MUST reply entirely in {user_language} language. Translate your responses naturally to {user_language}.]"
 
     # 🎲 RANDOM INNER THOUGHTS (30% CHANCE) 🎲
-        if 'user_language' in locals() and user_language != 'English':
+            if 'user_language' in locals() and user_language != 'English':
         system_prompt += f" [CRITICAL RULE: Always respond in {user_language} language only. Do not use English words or transliteration. Speak naturally like a native {user_language} speaker.]"
+
     else:
         system_prompt += " INSTRUCTION: Reply normally without inner thoughts. Just spoken text."
 
