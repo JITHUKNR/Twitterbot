@@ -427,23 +427,6 @@ async def start_roleplay_with_plot(update: Update, context: ContextTypes.DEFAULT
     except Exception:
         await context.bot.send_message(chat_id, "Ready! You can start chatting now. 💜")
 
-# 🌐 LANGUAGE SELECTION MENU 🌐
-async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🇬🇧 English", callback_data='lang_English'), InlineKeyboardButton("🇰🇷 Korean", callback_data='lang_Korean')],
-        [InlineKeyboardButton("🇮🇳 മലയാളം (Malayalam)", callback_data='lang_Malayalam'), InlineKeyboardButton("🇮🇳 தமிழ் (Tamil)", callback_data='lang_Tamil')],
-        [InlineKeyboardButton("🇮🇳 हिंदी (Hindi)", callback_data='lang_Hindi'), InlineKeyboardButton("🇯🇵 Japanese", callback_data='lang_Japanese')],
-        [InlineKeyboardButton("🇪🇸 Spanish", callback_data='lang_Spanish'), InlineKeyboardButton("🇸🇦 Arabic", callback_data='lang_Arabic')],
-        [InlineKeyboardButton("🔙 Back to Settings", callback_data='settings_menu')]
-    ]
-    
-    msg_text = "🌐 **Choose your preferred language:**\n\n(Select a language from below. I will speak to you in this language! 💜)"
-    
-    if update.callback_query:
-        await update.callback_query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else:
-        await update.message.reply_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
 # 👤 USER PERSONA COMMAND 👤
 async def set_persona_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -524,7 +507,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton(f"🔞 NSFW Mode: {status_text}", callback_data='toggle_nsfw')],
-        [InlineKeyboardButton("🌐 Change Language", callback_data='open_language_menu')],
+        # 👇 ഈ വരിയിലാണ് മാറ്റം
         [InlineKeyboardButton("💌 Send Feedback", callback_data='start_feedback_mode')],
         [InlineKeyboardButton("🔙 Close", callback_data='close_settings')]
     ]
@@ -895,9 +878,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "close_settings":
         await close_settings(update, context)
         return
-    if query.data == "open_language_menu":
-        await language_command(update, context)
-        return
 
         # Feedback മോഡ് ഓൺ ചെയ്യുന്നു
     if query.data == "start_feedback_mode":
@@ -916,14 +896,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data.startswith("plot_"):
         await set_plot_handler(update, context)
-        return
-
-        # 🌐 LANGUAGE SELECTION LOGIC
-    if query.data.startswith("lang_"):
-        selected_lang = query.data.split("_")[1]
-        if establish_db_connection():
-            db_collection_users.update_one({'user_id': query.from_user.id}, {'$set': {'language': selected_lang}}, upsert=True)
-        await query.message.edit_text(f"✅ **Language set to {selected_lang}!**\nI will now speak to you in {selected_lang}. 💜", parse_mode='Markdown')
         return
 
     # 3. GAME & DATE LOGIC
@@ -1257,7 +1229,6 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_doc:
             selected_char = user_doc.get('character', 'TaeKook')
             user_persona = user_doc.get('user_persona', 'Unknown')
-            user_language = user_doc.get('language', 'English')
             nsfw_enabled = user_doc.get('nsfw_enabled', False)
             
             final_name = selected_char # Default ആയി ഐഡി തന്നെ കൊടുക്കുന്നു
@@ -1303,14 +1274,10 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # 👤 USER PERSONA INJECTION
     system_prompt += f" USER PERSONA: The user is '{user_persona}'. Treat them accordingly."
-        # ഭാഷ മാറ്റാനുള്ള AI നിർദ്ദേശം
-            if 'user_language' in locals() and user_language != 'English':
-        system_prompt += f" [CRITICAL RULE: You MUST reply entirely in {user_language} language. Translate your responses naturally to {user_language}.]"
 
     # 🎲 RANDOM INNER THOUGHTS (30% CHANCE) 🎲
-            if 'user_language' in locals() and user_language != 'English':
-        system_prompt += f" [CRITICAL RULE: Always respond in {user_language} language only. Do not use English words or transliteration. Speak naturally like a native {user_language} speaker.]"
-
+    if random.random() < 0.3:
+        system_prompt += " INSTRUCTION: In this specific reply, include your secret inner thoughts using the format *(Thought: ...)*. Show your true hidden feelings."
     else:
         system_prompt += " INSTRUCTION: Reply normally without inner thoughts. Just spoken text."
 
