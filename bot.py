@@ -1304,8 +1304,11 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     # 👤 USER PERSONA INJECTION
     system_prompt += f" USER PERSONA: The user is '{user_persona}'. Treat them accordingly."
         # ഭാഷ മാറ്റാനുള്ള AI നിർദ്ദേശം
-    if 'user_language' in locals() and user_language != 'English':
-        system_prompt += f" [CRITICAL RULE: You MUST reply entirely in {user_language} language. Translate your responses naturally to {user_language}.]"
+        if 'user_language' in locals() and user_language != 'English':
+        if user_language == 'Malayalam':
+            system_prompt += " [CRITICAL RULE: Reply in Malayalam language. CRUCIAL: Mirror the user's script! If the user types in Manglish (Malayalam written in English alphabet), you MUST reply in Manglish. If the user types in native Malayalam script, reply in native Malayalam script. Be conversational and natural.]"
+        else:
+            system_prompt += f" [CRITICAL RULE: You MUST reply entirely in {user_language} language. Translate your responses naturally to {user_language}.]"
 
     # 🎲 RANDOM INNER THOUGHTS (30% CHANCE) 🎲
     if random.random() < 0.3:
