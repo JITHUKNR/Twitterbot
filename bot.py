@@ -1308,8 +1308,8 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         system_prompt += f" [CRITICAL RULE: You MUST reply entirely in {user_language} language. Translate your responses naturally to {user_language}.]"
 
     # 🎲 RANDOM INNER THOUGHTS (30% CHANCE) 🎲
-    if random.random() < 0.3:
-        system_prompt += " INSTRUCTION: In this specific reply, include your secret inner thoughts using the format *(Thought: ...)*. Show your true hidden feelings."
+        if 'user_language' in locals() and user_language != 'English':
+        system_prompt += f" [CRITICAL RULE: You MUST reply entirely in {user_language} language. Translate your responses naturally to {user_language}.]"
     else:
         system_prompt += " INSTRUCTION: Reply normally without inner thoughts. Just spoken text."
 
