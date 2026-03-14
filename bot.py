@@ -503,11 +503,11 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_doc:
             nsfw_status = user_doc.get('nsfw_enabled', False)
 
-    status_text = "✅ ON" if nsfw_status else "❌ OFF"
+        status_text = "✅ ON" if nsfw_status else "❌ OFF"
     
-        keyboard = [
+    keyboard = [
         [InlineKeyboardButton(f"🔞 NSFW Mode: {status_text}", callback_data='toggle_nsfw')],
-        [InlineKeyboardButton("🌐 Change Language", callback_data='change_language')], # 👈 പുതിയ ബട്ടൺ
+        [InlineKeyboardButton("🌐 Change Language", callback_data='change_language')],
         [InlineKeyboardButton("💌 Send Feedback", callback_data='start_feedback_mode')],
         [InlineKeyboardButton("🔙 Close", callback_data='close_settings')]
     ]
