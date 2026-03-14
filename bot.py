@@ -1334,7 +1334,7 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
         if not is_regenerate:
             chat_history[user_id].append({"role": "user", "content": user_text})
         
-        completion = groq_client.chat.completions.create(messages=chat_history[user_id], model="llama-3.1-8b-instant")
+        completion = groq_client.chat.completions.create(messages=chat_history[user_id], model="llama-3.3-70b-versatile")
         reply_text = completion.choices[0].message.content.strip()
         
         final_reply = add_emojis_balanced(reply_text)
