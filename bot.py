@@ -901,7 +901,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await close_settings(update, context)
         return
 
-        if query.data == "change_language":
+    if query.data == "change_language":
         await show_language_menu(update, context)
         return
     if query.data.startswith("lang_"):
