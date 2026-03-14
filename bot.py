@@ -505,9 +505,9 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_text = "✅ ON" if nsfw_status else "❌ OFF"
     
-    keyboard = [
+        keyboard = [
         [InlineKeyboardButton(f"🔞 NSFW Mode: {status_text}", callback_data='toggle_nsfw')],
-        # 👇 ഈ വരിയിലാണ് മാറ്റം
+        [InlineKeyboardButton("🌐 Change Language", callback_data='change_language')], # 👈 പുതിയ ബട്ടൺ
         [InlineKeyboardButton("💌 Send Feedback", callback_data='start_feedback_mode')],
         [InlineKeyboardButton("🔙 Close", callback_data='close_settings')]
     ]
@@ -554,6 +554,28 @@ async def toggle_nsfw_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def close_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.delete()
+# 🌐 LANGUAGE MENU HANDLER
+async def show_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🇬🇧 English", callback_data='lang_English'), InlineKeyboardButton("🇮🇳 മലയാളം", callback_data='lang_Malayalam')],
+        [InlineKeyboardButton("🇮🇳 Hindi", callback_data='lang_Hindi'), InlineKeyboardButton("🇰🇷 Korean", callback_data='lang_Korean')],
+        [InlineKeyboardButton("🇪🇸 Spanish", callback_data='lang_Spanish'), InlineKeyboardButton("🇫🇷 French", callback_data='lang_French')],
+        [InlineKeyboardButton("🔙 Back to Settings", callback_data='settings_menu')]
+    ]
+    msg_text = "🌐 **Choose your preferred language:**"
+    await update.callback_query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def set_language_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    selected_lang = query.data.split("_")[1]
+    user_id = query.from_user.id
+    
+    if establish_db_connection():
+        db_collection_users.update_one({'user_id': user_id}, {'$set': {'user_language': selected_lang}})
+        if user_id in chat_history: del chat_history[user_id]
+        
+        await query.answer(f"Language set to {selected_lang} ✅")
+        await settings_command(update, context)
 
 # 🍷 VIRTUAL DATE MODE HANDLER
 async def start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -877,6 +899,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if query.data == "close_settings":
         await close_settings(update, context)
+        return
+
+        if query.data == "change_language":
+        await show_language_menu(update, context)
+        return
+    if query.data.startswith("lang_"):
+        await set_language_handler(update, context)
         return
 
         # Feedback മോഡ് ഓൺ ചെയ്യുന്നു
@@ -1230,6 +1259,8 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
             selected_char = user_doc.get('character', 'TaeKook')
             user_persona = user_doc.get('user_persona', 'Unknown')
             nsfw_enabled = user_doc.get('nsfw_enabled', False)
+            user_language = user_doc.get('user_language', 'English')
+
             
             final_name = selected_char # Default ആയി ഐഡി തന്നെ കൊടുക്കുന്നു
 
@@ -1274,6 +1305,9 @@ async def generate_ai_response(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # 👤 USER PERSONA INJECTION
     system_prompt += f" USER PERSONA: The user is '{user_persona}'. Treat them accordingly."
+        # ഭാഷ മാറ്റാനുള്ള AI നിർദ്ദേശം
+    if 'user_language' in locals() and user_language != 'English':
+        system_prompt += f" [CRITICAL RULE: Always respond in {user_language} language only. Do not use English words or transliteration. Speak naturally like a native {user_language} speaker.]"
 
     # 🎲 RANDOM INNER THOUGHTS (30% CHANCE) 🎲
     if random.random() < 0.3:
